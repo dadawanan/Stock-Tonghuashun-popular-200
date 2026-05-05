@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
+
+from database import StockDatabase
 
 
 EVENT_PATTERNS: dict[str, dict[str, object]] = {
@@ -79,18 +82,6 @@ def normalize_stock_code(value: object) -> str:
     return text.upper()
 
 
-def load_csv(path: Path, required_columns: Iterable[str] | None = None) -> pd.DataFrame:
-    if not path.exists():
-        return pd.DataFrame(columns=list(required_columns or []))
-
-    df = pd.read_csv(path, encoding="utf-8-sig")
-    if required_columns:
-        for column in required_columns:
-            if column not in df.columns:
-                df[column] = pd.NA
-    return df
-
-
 def analyze_text_event(text: str) -> EventAnalysis:
     text = text or ""
     event_type = "other"
@@ -143,16 +134,9 @@ def aggregate_news(news_df: pd.DataFrame) -> pd.DataFrame:
     if news_df.empty:
         return pd.DataFrame(
             columns=[
-                "stock_code",
-                "event_types",
-                "text_event_label",
-                "text_score",
-                "sentiment_strength",
-                "duration_tag",
-                "fact_support",
-                "bullish_logic",
-                "bearish_logic",
-                "news_count",
+                "stock_code", "event_types", "text_event_label", "text_score",
+                "sentiment_strength", "duration_tag", "fact_support",
+                "bullish_logic", "bearish_logic", "news_count",
             ]
         )
 
@@ -165,20 +149,18 @@ def aggregate_news(news_df: pd.DataFrame) -> pd.DataFrame:
     analysis_rows: list[dict[str, object]] = []
     for _, row in work_df.iterrows():
         event = analyze_text_event(str(row["combined_text"]))
-        analysis_rows.append(
-            {
-                "stock_code": row["stock_code"],
-                "event_type": event.event_type,
-                "event_label": event.event_label,
-                "event_score": event.event_score,
-                "sentiment_score": event.sentiment_score,
-                "sentiment_strength": event.sentiment_strength,
-                "duration_tag": event.duration_tag,
-                "fact_support": event.fact_support,
-                "bullish_logic": event.bullish_logic,
-                "bearish_logic": event.bearish_logic,
-            }
-        )
+        analysis_rows.append({
+            "stock_code": row["stock_code"],
+            "event_type": event.event_type,
+            "event_label": event.event_label,
+            "event_score": event.event_score,
+            "sentiment_score": event.sentiment_score,
+            "sentiment_strength": event.sentiment_strength,
+            "duration_tag": event.duration_tag,
+            "fact_support": event.fact_support,
+            "bullish_logic": event.bullish_logic,
+            "bearish_logic": event.bearish_logic,
+        })
 
     analyzed_df = pd.DataFrame(analysis_rows)
     if analyzed_df.empty:
@@ -200,6 +182,63 @@ def aggregate_news(news_df: pd.DataFrame) -> pd.DataFrame:
     )
     result["text_score"] = result["text_score"].round(2)
     return result
+
+
+def analyze_news_records(news_df: pd.DataFrame) -> pd.DataFrame:
+    if news_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "article_id",
+                "stock_code",
+                "event_type",
+                "event_label",
+                "event_score",
+                "sentiment_score",
+                "sentiment_strength",
+                "duration_tag",
+                "fact_support",
+                "bullish_logic",
+                "bearish_logic",
+                "analysis_json",
+            ]
+        )
+
+    work_df = news_df.copy()
+    work_df["stock_code"] = work_df["stock_code"].map(normalize_stock_code)
+    work_df["combined_text"] = (
+        work_df["title"].fillna("").astype(str) + " " + work_df["content"].fillna("").astype(str)
+    ).str.strip()
+
+    rows: list[dict[str, object]] = []
+    for _, row in work_df.iterrows():
+        event = analyze_text_event(str(row["combined_text"]))
+        rows.append(
+            {
+                "article_id": row.get("id"),
+                "stock_code": row["stock_code"],
+                "event_type": event.event_type,
+                "event_label": event.event_label,
+                "event_score": event.event_score,
+                "sentiment_score": event.sentiment_score,
+                "sentiment_strength": event.sentiment_strength,
+                "duration_tag": event.duration_tag,
+                "fact_support": event.fact_support,
+                "bullish_logic": event.bullish_logic,
+                "bearish_logic": event.bearish_logic,
+                "analysis_json": {
+                    "event_type": event.event_type,
+                    "event_label": event.event_label,
+                    "event_score": event.event_score,
+                    "sentiment_score": event.sentiment_score,
+                    "sentiment_strength": event.sentiment_strength,
+                    "duration_tag": event.duration_tag,
+                    "fact_support": event.fact_support,
+                    "bullish_logic": event.bullish_logic,
+                    "bearish_logic": event.bearish_logic,
+                },
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def unique_keep_order(values: Iterable[object]) -> list[str]:
@@ -245,11 +284,8 @@ def analyze_market_behavior(market_df: pd.DataFrame) -> pd.DataFrame:
     if market_df.empty:
         return pd.DataFrame(
             columns=[
-                "stock_code",
-                "price_volume_signal",
-                "fund_flow_signal",
-                "behavior_label",
-                "market_score",
+                "stock_code", "price_volume_signal", "fund_flow_signal",
+                "behavior_label", "market_score",
             ]
         )
 
@@ -257,12 +293,8 @@ def analyze_market_behavior(market_df: pd.DataFrame) -> pd.DataFrame:
     work_df["stock_code"] = work_df["stock_code"].map(normalize_stock_code)
 
     numeric_columns = [
-        "pct_change",
-        "volume_ratio",
-        "turnover_rate",
-        "amplitude",
-        "main_net_inflow",
-        "relative_strength_vs_index",
+        "pct_change", "volume_ratio", "turnover_rate", "amplitude",
+        "main_net_inflow", "relative_strength_vs_index",
     ]
     for column in numeric_columns:
         work_df[column] = pd.to_numeric(work_df[column], errors="coerce")
@@ -282,7 +314,8 @@ def analyze_market_behavior(market_df: pd.DataFrame) -> pd.DataFrame:
         if pd.notna(pct_change) and pd.notna(volume_ratio) and pd.notna(relative_strength):
             price_volume_signal = "普通波动"
 
-        if pd.notna(pct_change) and pd.notna(volume_ratio) and pd.notna(relative_strength) and pct_change > 3 and volume_ratio > 1.5 and relative_strength > 1:
+        if (pd.notna(pct_change) and pd.notna(volume_ratio) and pd.notna(relative_strength)
+                and pct_change > 3 and volume_ratio > 1.5 and relative_strength > 1):
             price_volume_signal = "主动性上涨"
             score += 2.0
         elif pd.notna(pct_change) and pd.notna(relative_strength) and pct_change > 0 and relative_strength <= 0.5:
@@ -313,15 +346,13 @@ def analyze_market_behavior(market_df: pd.DataFrame) -> pd.DataFrame:
             behavior_label = "做多主导"
             score += 2.0
 
-        rows.append(
-            {
-                "stock_code": row["stock_code"],
-                "price_volume_signal": price_volume_signal,
-                "fund_flow_signal": fund_flow_signal,
-                "behavior_label": behavior_label,
-                "market_score": round(score, 2),
-            }
-        )
+        rows.append({
+            "stock_code": row["stock_code"],
+            "price_volume_signal": price_volume_signal,
+            "fund_flow_signal": fund_flow_signal,
+            "behavior_label": behavior_label,
+            "market_score": round(score, 2),
+        })
 
     return pd.DataFrame(rows)
 
@@ -346,43 +377,34 @@ def synthesize_decision(row: pd.Series) -> str:
     return "信号分歧，等待更多确认"
 
 
-def run_analysis(
-    stocks_file: Path,
-    news_file: Path,
-    market_file: Path,
-    output_file: Path,
-) -> Path:
-    stocks_df = load_csv(stocks_file)
-    if stocks_df.empty:
-        raise ValueError(f"未读取到新增股票数据: {stocks_file}")
+async def run_analysis(
+    db: StockDatabase,
+    stock_codes: list[str] | None = None,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    stocks = await db.get_all_stocks()
+    if not stocks:
+        raise ValueError("数据库中没有股票数据，请先运行 data_fetcher.py")
 
-    first_code_column = "股票代码" if "股票代码" in stocks_df.columns else stocks_df.columns[0]
-    first_name_column = "股票简称" if "股票简称" in stocks_df.columns else stocks_df.columns[1]
+    base_df = pd.DataFrame(stocks)
+    news_df = pd.DataFrame(await db.get_all_news())
+    market_df = pd.DataFrame(await db.get_market_data())
 
-    base_df = stocks_df[[first_code_column, first_name_column]].copy()
-    base_df.columns = ["stock_code", "stock_name"]
-    base_df["stock_code"] = base_df["stock_code"].map(normalize_stock_code)
+    if stock_codes:
+        normalized_codes = {normalize_stock_code(code) for code in stock_codes}
+        base_df = base_df[base_df["stock_code"].isin(normalized_codes)].copy()
+        if not news_df.empty:
+            news_df = news_df[news_df["stock_code"].map(normalize_stock_code).isin(normalized_codes)].copy()
+        if not market_df.empty:
+            market_df = market_df[market_df["stock_code"].map(normalize_stock_code).isin(normalized_codes)].copy()
 
-    news_df = load_csv(news_file, required_columns=["stock_code", "title", "content", "published_at", "source"])
-    market_df = load_csv(
-        market_file,
-        required_columns=[
-            "stock_code",
-            "pct_change",
-            "volume_ratio",
-            "turnover_rate",
-            "amplitude",
-            "main_net_inflow",
-            "relative_strength_vs_index",
-        ],
-    )
+    if base_df.empty:
+        raise ValueError("待分析股票列表为空，无法执行分析")
 
+    news_analysis_df = analyze_news_records(news_df)
     news_result = aggregate_news(news_df)
     market_result = analyze_market_behavior(market_df)
 
-    result = base_df.merge(news_result, on="stock_code", how="left").merge(
-        market_result, on="stock_code", how="left"
-    )
+    result = base_df.merge(news_result, on="stock_code", how="left").merge(market_result, on="stock_code", how="left")
 
     result["text_score"] = pd.to_numeric(result["text_score"], errors="coerce").fillna(0.0)
     result["market_score"] = pd.to_numeric(result["market_score"], errors="coerce").fillna(0.0)
@@ -390,21 +412,54 @@ def run_analysis(
     result["decision"] = result.apply(synthesize_decision, axis=1)
 
     fill_columns = [
-        "event_types",
-        "text_event_label",
-        "sentiment_strength",
-        "duration_tag",
-        "fact_support",
-        "bullish_logic",
-        "bearish_logic",
-        "price_volume_signal",
-        "fund_flow_signal",
-        "behavior_label",
+        "event_types", "text_event_label", "sentiment_strength", "duration_tag",
+        "fact_support", "bullish_logic", "bearish_logic",
+        "price_volume_signal", "fund_flow_signal", "behavior_label",
     ]
     for column in fill_columns:
         result[column] = result[column].fillna("暂无数据")
     result["news_count"] = pd.to_numeric(result["news_count"], errors="coerce").fillna(0).astype(int)
 
     result = result.sort_values(["integrated_score", "news_count"], ascending=[False, False])
-    result.to_csv(output_file, index=False, encoding="utf-8-sig")
-    return output_file
+    result.attrs["news_analysis_rows"] = news_analysis_df.to_dict("records")
+    result.attrs["latest_trade_date"] = market_df["trade_date"].dropna().max() if "trade_date" in market_df.columns and not market_df.empty else None
+    result.attrs["latest_snapshot_time"] = market_df["snapshot_time"].dropna().max() if "snapshot_time" in market_df.columns and not market_df.empty else None
+    return result.to_dict("records"), result.attrs
+
+
+async def run_and_store(db: StockDatabase, stock_codes: list[str] | None = None) -> None:
+    run_id = await db.create_pipeline_run(run_type="analyze", source="rule")
+    try:
+        results, meta = await run_analysis(db, stock_codes=stock_codes)
+        news_analysis_rows = meta.get("news_analysis_rows", [])
+        article_ids = [row["article_id"] for row in news_analysis_rows if row.get("article_id") is not None]
+        if news_analysis_rows:
+            await db.replace_news_analysis_batch(run_id, news_analysis_rows, article_ids)
+
+        trade_date = meta.get("latest_trade_date")
+        snapshot_time = meta.get("latest_snapshot_time")
+        for row in results:
+            row["run_id"] = run_id
+            row["trade_date"] = trade_date
+            row["snapshot_time"] = snapshot_time
+            row["reasoning_json"] = {
+                "text_event_label": row.get("text_event_label"),
+                "fund_flow_signal": row.get("fund_flow_signal"),
+                "behavior_label": row.get("behavior_label"),
+                "decision": row.get("decision"),
+            }
+
+        count = await db.insert_stock_analysis_batch(results)
+        await db.complete_pipeline_run(
+            run_id,
+            status="success",
+            analysis_count=count,
+        )
+        print(f"[analysis] 写入 {count} 条分析结果")
+    except Exception as exc:
+        await db.complete_pipeline_run(run_id, status="failed", error_message=str(exc))
+        raise
+
+
+def build_parser() -> None:
+    pass

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(pip install *)",
+      "Bash(pip list *)",
+      "Bash(python app.py)",
+      "Bash(echo \"PID: $!\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(curl -s http://localhost:8000/api/stocks)",
+      "Bash(curl -s -X POST http://localhost:8000/api/fetch)",
+      "Bash(PGPASSWORD='3C3TaF3t8HFtfTtPZBUK' psql *)",
+      "Bash(kill 64253)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s -X POST http://localhost:8000/api/analyze)",
+      "Bash(kill 69345)"
+    ]
+  }
+}
