@@ -1,4 +1,4 @@
-import { Button, message, Table, Typography } from "antd";
+import { Button, message, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { analysisApi, AnalysisResult } from "../utils";
 import dayjs from "dayjs";
@@ -39,6 +39,16 @@ export default function HomePage() {
       title: "事件类型",
       dataIndex: "event_types",
       key: "event_types",
+      render: (text: string) => {
+        text = text.replace("major_order", "大订单");
+        text = text.replace("supply_chain_risk", "供应链风险");
+        text = text.replace("earnings_growth", "盈利增长");
+        text = text.replace("management_risk", "管理风险");
+        text = text.replace("other", "");
+        const tags = text.split("|");
+
+        return tags.map((tag) => <Tag key={tag}>{tag}</Tag>);
+      },
     },
     {
       title: "事件标签",
