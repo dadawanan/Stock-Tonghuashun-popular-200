@@ -1,12 +1,29 @@
-import { Button, message, Table, Tag, Typography } from "antd";
+import {
+  Button,
+  message,
+  Table,
+  Tag,
+  Typography,
+  DatePicker,
+  Space,
+} from "antd";
 import { useEffect, useState } from "react";
 import { analysisApi, AnalysisResult } from "../utils";
 import dayjs from "dayjs";
 const { Title, Paragraph, Text, Link } = Typography;
 
+const { RangePicker } = DatePicker;
 export default function HomePage() {
   const [data, setData] = useState<AnalysisResult[]>([]);
+  const [totalData, setTotalData] = useState<AnalysisResult[]>([]);
   const [running, setRunning] = useState(false);
+  const [filters, setFilters] = useState<{
+    startTime: string | null;
+    endTime: string | null;
+  }>({
+    startTime: "",
+    endTime: "",
+  });
 
   const columns = [
     {
@@ -22,13 +39,14 @@ export default function HomePage() {
       render: (text: string) => (
         <a
           onClick={() => {
-            try {
-              window.navigator.clipboard.writeText(text);
-              console.log("复制成功！");
-            } catch (e) {
-              console.error(e);
-              console.error("复制失败：", e);
-            }
+            window.navigator.clipboard
+              .writeText(text)
+              .then(() => {
+                message.success("已复制股票名称");
+              })
+              .catch(() => {
+                message.error("复制失败");
+              });
           }}
         >
           {text}
@@ -80,6 +98,8 @@ export default function HomePage() {
       title: "情绪强度",
       dataIndex: "sentiment_strength",
       key: "sentiment_strength",
+      sorter: (a, b) =>
+        a.sentiment_strength.localeCompare(b.sentiment_strength),
     },
     {
       title: "持续周期",
@@ -90,6 +110,8 @@ export default function HomePage() {
       title: "事实支撑度",
       dataIndex: "fact_support",
       key: "fact_support",
+      sorter: (a, b) =>
+        a.sentiment_strength.localeCompare(b.sentiment_strength),
     },
     {
       title: "看多逻辑",
@@ -115,6 +137,7 @@ export default function HomePage() {
       title: "资金流向信号",
       dataIndex: "fund_flow_signal",
       key: "fund_flow_signal",
+      sorter: (a, b) => a.fund_flow_signal.localeCompare(b.fund_flow_signal),
     },
     {
       title: "行为标签",
@@ -148,13 +171,29 @@ export default function HomePage() {
 
   const getStocks = () => {
     analysisApi.getList().then((res) => {
-      setData(res);
+      setTotalData(res);
     });
   };
 
   useEffect(() => {
     getStocks();
   }, []);
+
+  useEffect(() => {
+    // 过滤时间
+    if (filters.startTime && filters.endTime) {
+      console.log(filters.startTime, filters.endTime);
+      setData(
+        totalData.filter(
+          (item) =>
+            dayjs(item.analyzed_at).isAfter(filters.startTime) &&
+            dayjs(item.analyzed_at).isBefore(filters.endTime),
+        ),
+      );
+    } else {
+      setData(totalData);
+    }
+  }, [filters, totalData]);
 
   return (
     <div>
@@ -165,23 +204,39 @@ export default function HomePage() {
           当前同花顺人气前200新增的股票，比较的是上次的前200和现在的前200。
         </Paragraph>
       </Typography>
-      <Button
-        type="primary"
-        disabled={running}
-        onClick={() => {
-          setRunning(true);
-          message.success("开始获取新增人气股票");
-          analysisApi.runAll().then((res) => {
-            message.success(
-              `获取完成,成功获取到${res.analysis.result_count}条数据`,
-            );
-            getStocks();
-            setRunning(false);
-          });
-        }}
-      >
-        获取新增人气股票
-      </Button>
+      <Space>
+        <Button
+          type="primary"
+          disabled={running}
+          onClick={() => {
+            setRunning(true);
+            message.success("开始获取新增人气股票");
+            analysisApi.runAll().then((res) => {
+              message.success(
+                `获取完成,成功获取到${res.analysis.result_count}条数据`,
+              );
+              getStocks();
+              setRunning(false);
+            });
+          }}
+        >
+          获取新增人气股票
+        </Button>
+        <span>时间:</span>
+
+        <RangePicker
+          onChange={(values) => {
+            console.log(values);
+            setFilters({
+              startTime:
+                values && values[0] && values[0].format("YYYY-MM-DD HH:mm:ss"),
+              endTime: dayjs(values && values[1] && values[1])
+                .endOf("day")
+                .format("YYYY-MM-DD HH:mm:ss"),
+            });
+          }}
+        ></RangePicker>
+      </Space>
 
       <Table dataSource={data} columns={columns} scroll={{ x: 3000 }}></Table>
     </div>
