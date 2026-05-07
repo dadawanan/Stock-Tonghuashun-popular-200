@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import asyncpg
@@ -15,6 +16,8 @@ from stock_service.infrastructure.db.repositories.stock import StockRepository
 
 
 _SCHEMA_FILE = Path(__file__).resolve().parents[4] / "schema_v2.sql"
+
+logger = logging.getLogger(__name__)
 
 
 class StockDatabase:
@@ -39,15 +42,36 @@ class StockDatabase:
         if self.pool:
             self._bind_repositories()
             return
-        self.pool = await asyncpg.create_pool(
-            host=DATABASE_CONFIG["host"],
-            port=DATABASE_CONFIG["port"],
-            database=DATABASE_CONFIG["database"],
-            user=DATABASE_CONFIG["user"],
-            password=DATABASE_CONFIG["password"],
-            min_size=2,
-            max_size=10,
-        )
+        pool_kw: dict = {
+            "host": DATABASE_CONFIG["host"],
+            "port": DATABASE_CONFIG["port"],
+            "database": DATABASE_CONFIG["database"],
+            "user": DATABASE_CONFIG["user"],
+            "password": DATABASE_CONFIG["password"],
+            "min_size": 2,
+            "max_size": 10,
+            "timeout": DATABASE_CONFIG["timeout"],
+        }
+        ssl_val = DATABASE_CONFIG.get("ssl")
+        if ssl_val is not None:
+            pool_kw["ssl"] = ssl_val
+        target = f"{pool_kw['host']}:{pool_kw['port']}/{pool_kw['database']}"
+        try:
+            self.pool = await asyncpg.create_pool(**pool_kw)
+        except TimeoutError as exc:
+            logger.exception("PostgreSQL 连接超时: %s", target)
+            raise RuntimeError(
+                f"连接 PostgreSQL 超时（{target}）。"
+                "常见原因：云数据库安全组/防火墙未放行你当前公网 IP；"
+                "主机或端口填错；云上实例要求 SSL 时在 .env 设置 DB_SSL=require。"
+                "修改 .env 后请执行：pm2 restart stock-api --update-env"
+            ) from exc
+        except OSError as exc:
+            logger.exception("PostgreSQL 连接失败: %s", target)
+            raise RuntimeError(
+                f"无法访问 PostgreSQL（{target}）：{exc}。"
+                "请检查网络、VPN、DB_HOST/DB_PORT。"
+            ) from exc
         await self._ensure_schema()
         self._bind_repositories()
 

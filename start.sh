@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # 使用 PM2 后台常驻：关闭终端不会停止服务。
 # 依赖：pm2（npm i -g pm2）、python3、pnpm，web-ui 已 pnpm install
+#
+# 若前端在 PM2 里起不来、但你本地 `pnpm run start` 正常：多半是 PATH 不一致。
+# 请在「已经 conda activate / 能执行 which pnpm」的同一终端里运行 ./start.sh，
+# 以便 ecosystem.config.js 把当前 PATH 传给 PM2 子进程。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,12 +42,50 @@ kill_port() {
 kill_port 8000
 kill_port 8001
 
-# 避免重复注册同名应用
-pm2 delete stock-api 2>/dev/null || true
-pm2 delete stock-web 2>/dev/null || true
+# 删掉正确名称的应用
+pm2 delete stock-api stock-web 2>/dev/null || true
+# 若曾用 ecosystem.config.cjs 启动失败，PM2 会把配置文件当 Node 脚本跑，进程名显示 ecosystem.config，需反复删干净
+for _ in 1 2 3 4 5 6 7 8; do
+  pm2 delete ecosystem.config 2>/dev/null || break
+done
+sleep 1
 
-echo "[start] PM2 启动 stock-api :8000 + stock-web :8001"
-pm2 start "${SCRIPT_DIR}/ecosystem.config.cjs"
+echo "[start] PM2 启动 stock-api :8000 + stock-web :8001（使用 ecosystem.config.js）"
+# 勿用 .cjs：若干 PM2 版本不识别为 ecosystem；勿加 -f，避免异常解析
+pm2 start "${SCRIPT_DIR}/ecosystem.config.js"
+
+sleep 1
+echo ""
+
+# 后端启动后要连库（lifespan），2s 内 curl 容易误报；多试几次
+wait_http_ok() {
+  local url=$1
+  local label=$2
+  local max=${3:-30}
+  local i
+  for ((i = 1; i <= max; i++)); do
+    if curl -sf --connect-timeout 2 --max-time 5 "$url" >/dev/null 2>&1; then
+      echo "[start] ${label} 探测正常: ${url}（约 ${i}s）"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "[start] 警告: ${label} 在 ${max}s 内仍无响应: ${url}"
+  return 1
+}
+
+if wait_http_ok "http://127.0.0.1:8000/" "后端" 30; then
+  :
+else
+  echo "        常见原因: PostgreSQL 未启动、DATABASE_URL/.env 配置不对、依赖未装"
+  echo "        排查: pm2 logs stock-api --lines 80"
+fi
+
+if wait_http_ok "http://127.0.0.1:8001/" "前端" 25; then
+  :
+else
+  echo "        排查: pm2 logs stock-web --lines 80"
+fi
 
 echo ""
 echo "  API:    http://127.0.0.1:8000  （Swagger /docs）"
@@ -51,4 +93,5 @@ echo "  前端:   http://127.0.0.1:8001"
 echo ""
 echo "  常用:   pm2 status | pm2 logs | pm2 logs stock-api"
 echo "  停止:   ./stop.sh   或   pm2 stop stock-api stock-web"
+echo "  改 .env 后:  pm2 restart stock-api --update-env"
 echo ""

@@ -15,6 +15,18 @@ logger = logging.getLogger("stock-api")
 
 
 app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    """浏览器直接打开 / 时给出指引（否则默认 404 易被误认为服务未启动）。"""
+    return {
+        "service": "Stock Analysis API",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
+
+
 app.include_router(health_router)
 app.include_router(popularity_router)
 app.include_router(analysis_router)

@@ -47,6 +47,16 @@ def _get_int_env(name: str, default: str) -> int:
         raise RuntimeError(f"环境变量无效: {name}={raw_value!r}") from exc
 
 
+def _parse_db_ssl() -> bool | None:
+    """asyncpg：本机 PostgreSQL 常未开 SSL，若按客户端默认去握手易卡住直至超时。默认关闭 SSL。"""
+    raw = os.getenv("DB_SSL", "disable").strip().lower()
+    if raw in ("require", "true", "1", "on"):
+        return True
+    if raw in ("prefer",):
+        return None
+    return False
+
+
 _load_dotenv()
 
 
@@ -56,6 +66,8 @@ class Settings:
     db_name = _get_required_env("DB_NAME", "stock_db")
     db_user = _get_required_env("DB_USER", "postgres")
     db_password = _get_required_env("DB_PASSWORD", "")
+    db_ssl = _parse_db_ssl()
+    db_connect_timeout = _get_int_env("DB_CONNECT_TIMEOUT", "90")
     ths_query = _get_required_env("THS_POPULARITY_QUERY", "人气排名前200")
     ths_cookie = os.getenv("THS_COOKIE", "").strip()
 
@@ -69,4 +81,6 @@ DATABASE_CONFIG = {
     "database": settings.db_name,
     "user": settings.db_user,
     "password": settings.db_password,
+    "ssl": settings.db_ssl,
+    "timeout": float(settings.db_connect_timeout),
 }
