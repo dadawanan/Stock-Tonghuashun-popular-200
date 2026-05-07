@@ -2,12 +2,12 @@
 
 这个项目现在包含三段能力：
 
-1. `get_popularity.py`
+1. `stock_service.application.services.popularity_service`
    用 `pywencai` 抓取同花顺人气前 200，并识别新进入榜单的股票。
-2. `data_fetcher.py`
-   自动生成真实的 `news_data.csv` 和 `market_data.csv`。
-2. `main.py`
-   对 `新增股票.csv` 做新闻事件分析、情绪分析、价量和资金行为分析，最后输出综合判断结果。
+2. `stock_service.application.services.market_data_service`
+   为新增股票抓取真实新闻和行情数据并写入数据库。
+3. `stock_service.main`
+   执行“抓榜单 -> 比较新增 -> 抓新闻和行情 -> 分析新增股票”的主流程。
 
 ## 一、当前整体流程
 
@@ -22,35 +22,32 @@
 
 ## 二、如何运行
 
-你现在有两种运行方式。
-
-### 方式 A：自动抓真实数据再分析
+先安装为本地可编辑包：
 
 ```bash
-python3 main.py --stocks 新增股票.csv --news news_data.csv --market market_data.csv --output analysis_result.csv --fetch-real-data
+python3 -m pip install -e .
 ```
 
-### 方式 B：只分析已有输入文件
+安装后，你现在有三种运行方式。
 
-先准备三份文件：
+### 方式 A：直接运行主流程
 
-1. `新增股票.csv`
-   你已经有这份文件，至少需要股票代码和股票简称。
-2. `news_data.csv`
-   每条新闻或公告一行。
-3. `market_data.csv`
-   每只股票一行，放量价和资金信号。
+```bash
+python3 -m stock_service.main
+```
+
+### 方式 B：只抓取，不做分析
 
 运行：
 
 ```bash
-python3 main.py --stocks 新增股票.csv --news news_data.csv --market market_data.csv --output analysis_result.csv
+python3 -m stock_service.main --fetch-only
 ```
 
-输出文件：
+### 方式 C：启动 API
 
-```text
-analysis_result.csv
+```bash
+uvicorn stock_service.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 ## 三、输入格式
@@ -209,10 +206,11 @@ stock_code,pct_change,volume_ratio,turnover_rate,amplitude,main_net_inflow,relat
 
 ## 八、当前代码文件
 
-- [main.py](/Users/fyq/Desktop/workshop/stock/main.py)
-- [data_fetcher.py](/Users/fyq/Desktop/workshop/stock/data_fetcher.py)
-- [stock_analyzer.py](/Users/fyq/Desktop/workshop/stock/stock_analyzer.py)
-- [get_popularity.py](/Users/fyq/Desktop/workshop/stock/get_popularity.py)
+- [src/stock_service/main.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/main.py)
+- [src/stock_service/api/app.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/api/app.py)
+- [src/stock_service/application/services/popularity_service.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/application/services/popularity_service.py)
+- [src/stock_service/application/services/market_data_service.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/application/services/market_data_service.py)
+- [src/stock_service/application/services/analysis_service.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/application/services/analysis_service.py)
 
 如果你下一步想要，我可以继续直接帮你做两件事中的一种：
 

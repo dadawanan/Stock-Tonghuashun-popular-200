@@ -34,9 +34,11 @@ export interface AnalysisResult {
   fact_support: string;
   bullish_logic: string;
   bearish_logic: string;
+  news_count: number;
   price_volume_signal: string;
   fund_flow_signal: string;
   behavior_label: string;
+  market_score: number;
   integrated_score: number;
   decision: string;
   analyzed_at: string;
@@ -45,11 +47,13 @@ export interface AnalysisResult {
 export interface NewsItem {
   id: number;
   stock_code: string;
+  stock_name?: string | null;
   title: string;
-  content: string;
-  published_at: string;
-  source: string;
-  url: string;
+  content?: string | null;
+  summary?: string | null;
+  published_at?: string | null;
+  source?: string | null;
+  url?: string | null;
 }
 
 export const popularityApi = {
@@ -77,8 +81,8 @@ export const analysisApi = {
 };
 
 export const newsApi = {
-  getByStockCode: (stockCode: string, limit: number = 20) => 
-    http.get<NewsItem[]>(`/api/news/${stockCode}`, {
+  getByStockCode: (stockCode: string, limit: number = 20) =>
+    http.get<NewsItem[]>(`/api/news/${encodeURIComponent(stockCode)}`, {
       params: { limit },
     }),
 };

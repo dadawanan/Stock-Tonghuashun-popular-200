@@ -1,14 +1,24 @@
 import {
   Button,
   message,
+  Modal,
+  Spin,
   Table,
   Tag,
   Typography,
   DatePicker,
   Space,
+  Tooltip,
 } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useEffect, useState } from "react";
-import { analysisApi, AnalysisResult } from "../utils";
+import {
+  analysisApi,
+  AnalysisResult,
+  copyToClipboard,
+  newsApi,
+  NewsItem,
+} from "../utils";
 import dayjs from "dayjs";
 const { Title, Paragraph, Text, Link } = Typography;
 
@@ -17,6 +27,10 @@ export default function HomePage() {
   const [data, setData] = useState<AnalysisResult[]>([]);
   const [totalData, setTotalData] = useState<AnalysisResult[]>([]);
   const [running, setRunning] = useState(false);
+  const [newsModalOpen, setNewsModalOpen] = useState(false);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsRows, setNewsRows] = useState<NewsItem[]>([]);
+  const [newsModalTitle, setNewsModalTitle] = useState("");
   const [filters, setFilters] = useState<{
     startTime: string | null;
     endTime: string | null;
@@ -25,7 +39,19 @@ export default function HomePage() {
     endTime: "",
   });
 
-  const columns = [
+  const openNewsModal = (record: AnalysisResult) => {
+    setNewsModalTitle(`${record.stock_name}（${record.stock_code}）`);
+    setNewsModalOpen(true);
+    setNewsLoading(true);
+    setNewsRows([]);
+    newsApi
+      .getByStockCode(record.stock_code, 100)
+      .then((rows) => setNewsRows(Array.isArray(rows) ? rows : []))
+      .catch(() => setNewsRows([]))
+      .finally(() => setNewsLoading(false));
+  };
+
+  const columns: ColumnsType<AnalysisResult> = [
     {
       title: "股票代码",
       dataIndex: "stock_code",
@@ -39,14 +65,14 @@ export default function HomePage() {
       render: (text: string) => (
         <a
           onClick={() => {
-            window.navigator.clipboard
-              .writeText(text)
-              .then(() => {
+            void copyToClipboard(text).then(
+              () => {
                 message.success("已复制股票名称");
-              })
-              .catch(() => {
+              },
+              () => {
                 message.error("复制失败");
-              });
+              },
+            );
           }}
         >
           {text}
@@ -127,6 +153,11 @@ export default function HomePage() {
       title: "新闻数量",
       dataIndex: "news_count",
       key: "news_count",
+      render: (count: number | undefined, record) => (
+        <Button type="link" size="small" onClick={() => openNewsModal(record)}>
+          {count ?? 0}
+        </Button>
+      ),
     },
     {
       title: "量价信号",
@@ -203,6 +234,7 @@ export default function HomePage() {
         <Paragraph>
           当前同花顺人气前200新增的股票，比较的是上次的前200和现在的前200。
         </Paragraph>
+        <Paragraph>数据仅保留14天</Paragraph>
       </Typography>
       <Space>
         <Button
@@ -238,7 +270,84 @@ export default function HomePage() {
         ></RangePicker>
       </Space>
 
-      <Table dataSource={data} columns={columns} scroll={{ x: 3000 }}></Table>
+      <Table
+        dataSource={data}
+        columns={columns}
+        scroll={{ x: 3000 }}
+        rowKey={(row) =>
+          `${row.stock_code}-${row.analyzed_at}-${row.integrated_score}`
+        }
+      />
+
+      <Modal
+        title={`新闻明细 — ${newsModalTitle}`}
+        open={newsModalOpen}
+        onCancel={() => setNewsModalOpen(false)}
+        footer={null}
+        width={960}
+        destroyOnHidden
+      >
+        <Spin spinning={newsLoading}>
+          <Table<NewsItem>
+            size="small"
+            pagination={{ pageSize: 8, showSizeChanger: true }}
+            dataSource={newsRows}
+            rowKey={(row) => String(row.id)}
+            scroll={{ x: 840 }}
+            columns={[
+              {
+                title: "标题",
+                dataIndex: "title",
+                key: "title",
+                width: 260,
+                ellipsis: true,
+              },
+              {
+                title: "时间",
+                dataIndex: "published_at",
+                key: "published_at",
+                width: 168,
+                render: (t: string | null | undefined) =>
+                  t ? dayjs(t).format("YYYY-MM-DD HH:mm:ss") : "—",
+              },
+              {
+                title: "来源",
+                dataIndex: "source",
+                key: "source",
+                width: 96,
+                ellipsis: true,
+                render: (s: string | null | undefined) => s ?? "—",
+              },
+              {
+                title: "链接",
+                dataIndex: "url",
+                key: "url",
+                width: 72,
+                render: (url: string | null | undefined) =>
+                  url ? (
+                    <a href={url} target="_blank" rel="noreferrer">
+                      打开
+                    </a>
+                  ) : (
+                    "—"
+                  ),
+              },
+              {
+                title: "内容摘要",
+                key: "snippet",
+                ellipsis: true,
+                render: (_: unknown, row) => {
+                  return (
+                    <Tooltip title={row.content}>
+                      <div>{row.summary || row.content}</div>
+                    </Tooltip>
+                  );
+                },
+              },
+            ]}
+          />
+        </Spin>
+      </Modal>
     </div>
   );
 }

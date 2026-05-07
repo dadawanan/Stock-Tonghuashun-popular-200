@@ -1,10 +1,31 @@
-.navs {
-  ul {
-    padding: 0;
-    list-style: none;
-    display: flex;
-  }
-  li {
-    margin-right: 1em;
-  }
+.root {
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding-inline: 24px;
+  background: #001529;
+}
+
+.brand {
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.menu {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+.content {
+  padding: 24px;
+  background: #f5f5f5;
+  min-height: calc(100vh - 64px);
 }

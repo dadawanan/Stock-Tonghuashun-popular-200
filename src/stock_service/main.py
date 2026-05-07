@@ -3,28 +3,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from data_fetcher import run_fetch_pipeline_for_rows, run_popularity_pipeline
-from database import StockDatabase
-from stock_analyzer import run_and_store
+from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
+from stock_service.application.services.popularity_service import run_popularity_pipeline
+from stock_service.application.services.analysis_service import run_and_store
+from stock_service.infrastructure.db.database import StockDatabase
 
 
 async def main_async(fetch_only: bool = False) -> None:
     popularity_result = await run_popularity_pipeline()
     new_entries = popularity_result["comparison"]["new_entries"]
-
-    print(
-        f"[popularity] 获取 {popularity_result['stock_count']} 只股票，"
-        f"新增 {popularity_result['new_entry_count']} 只"
-    )
-
+    print(f"[popularity] 获取 {popularity_result['stock_count']} 只股票，新增 {popularity_result['new_entry_count']} 只")
     if not new_entries:
         print("[run-all] 本次榜单没有新增股票")
         return
-
     await run_fetch_pipeline_for_rows(new_entries, run_type="fetch", source="ths_new_entries")
     if fetch_only:
         return
-
     db = StockDatabase()
     await db.initialize()
     try:
