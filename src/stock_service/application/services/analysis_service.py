@@ -1,11 +1,56 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
 
 from stock_service.domain.services.analysis_rules import aggregate_news, analyze_market_behavior, analyze_news_records, normalize_stock_code, synthesize_decision
 from stock_service.infrastructure.db.database import StockDatabase
+
+
+def _series_max_non_na(series: pd.Series) -> Any:
+    """空序列或非数值列上 pandas .max() 会得到 float nan，不能写入 PG DATE/TIMESTAMP。"""
+    clean = series.dropna()
+    if clean.empty:
+        return None
+    val = clean.max()
+    try:
+        if pd.isna(val):
+            return None
+    except TypeError:
+        pass
+    return val
+
+
+def _to_sql_date(val: Any) -> date | None:
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except TypeError:
+        pass
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    ts = pd.Timestamp(val)
+    return None if pd.isna(ts) else ts.date()
+
+
+def _to_sql_datetime(val: Any) -> datetime | None:
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except TypeError:
+        pass
+    if isinstance(val, datetime):
+        return val
+    ts = pd.Timestamp(val)
+    return None if pd.isna(ts) else ts.to_pydatetime()
 
 
 async def run_analysis(db: StockDatabase, stock_codes: list[str] | None = None) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -37,8 +82,18 @@ async def run_analysis(db: StockDatabase, stock_codes: list[str] | None = None) 
     result["news_count"] = pd.to_numeric(result["news_count"], errors="coerce").fillna(0).astype(int)
     result = result.sort_values(["integrated_score", "news_count"], ascending=[False, False])
     result.attrs["news_analysis_rows"] = news_analysis_df.to_dict("records")
-    result.attrs["latest_trade_date"] = market_df["trade_date"].dropna().max() if "trade_date" in market_df.columns and not market_df.empty else None
-    result.attrs["latest_snapshot_time"] = market_df["snapshot_time"].dropna().max() if "snapshot_time" in market_df.columns and not market_df.empty else None
+    td_raw = (
+        _series_max_non_na(market_df["trade_date"])
+        if "trade_date" in market_df.columns and not market_df.empty
+        else None
+    )
+    st_raw = (
+        _series_max_non_na(market_df["snapshot_time"])
+        if "snapshot_time" in market_df.columns and not market_df.empty
+        else None
+    )
+    result.attrs["latest_trade_date"] = _to_sql_date(td_raw)
+    result.attrs["latest_snapshot_time"] = _to_sql_datetime(st_raw)
     return result.to_dict("records"), result.attrs
 
 

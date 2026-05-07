@@ -5,6 +5,7 @@ export default defineConfig({
   routes: [
     { path: "/", component: "index" },
     { path: "/sim-account", component: "sim-account" },
+    { path: "/changelog", component: "changelog" },
     { path: "/docs", component: "docs" },
   ],
   npmClient: 'pnpm',

@@ -1,5 +1,6 @@
 import {
   Button,
+  Input,
   message,
   Modal,
   Spin,
@@ -27,6 +28,9 @@ export default function HomePage() {
   const [data, setData] = useState<AnalysisResult[]>([]);
   const [totalData, setTotalData] = useState<AnalysisResult[]>([]);
   const [running, setRunning] = useState(false);
+  const [singleModalOpen, setSingleModalOpen] = useState(false);
+  const [singleStockInput, setSingleStockInput] = useState("");
+  const [singleAnalyzing, setSingleAnalyzing] = useState(false);
   const [newsModalOpen, setNewsModalOpen] = useState(false);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsRows, setNewsRows] = useState<NewsItem[]>([]);
@@ -95,6 +99,28 @@ export default function HomePage() {
       },
     },
     {
+      title: "新闻数量",
+      dataIndex: "news_count",
+      key: "news_count",
+      render: (count: number | undefined, record) => (
+        <Button type="link" size="small" onClick={() => openNewsModal(record)}>
+          {count ?? 0}
+        </Button>
+      ),
+    },
+    {
+      title: "评分",
+      dataIndex: "text_score",
+      key: "text_score",
+      sorter: (a, b) => a.text_score - b.text_score,
+    },
+    {
+      title: "分析时间",
+      dataIndex: "analyzed_at",
+      key: "analyzed_at",
+      render: (text: string) => dayjs(text).format("YYYY-MM-DD HH:mm:ss"),
+    },
+    {
       title: "事件标签",
       dataIndex: "text_event_label",
       key: "text_event_label",
@@ -114,12 +140,7 @@ export default function HomePage() {
       ],
       onFilter: (value, record) => record.text_event_label.includes(value),
     },
-    {
-      title: "评分",
-      dataIndex: "text_score",
-      key: "text_score",
-      sorter: (a, b) => a.text_score - b.text_score,
-    },
+
     {
       title: "情绪强度",
       dataIndex: "sentiment_strength",
@@ -144,21 +165,7 @@ export default function HomePage() {
       dataIndex: "bullish_logic",
       key: "bullish_logic",
     },
-    {
-      title: "看空逻辑",
-      dataIndex: "bullish_logic",
-      key: "bearish_logic",
-    },
-    {
-      title: "新闻数量",
-      dataIndex: "news_count",
-      key: "news_count",
-      render: (count: number | undefined, record) => (
-        <Button type="link" size="small" onClick={() => openNewsModal(record)}>
-          {count ?? 0}
-        </Button>
-      ),
-    },
+
     {
       title: "量价信号",
       dataIndex: "price_volume_signal",
@@ -192,12 +199,6 @@ export default function HomePage() {
       dataIndex: "decision",
       key: "decision",
     },
-    {
-      title: "分析时间",
-      dataIndex: "analyzed_at",
-      key: "analyzed_at",
-      render: (text: string) => dayjs(text).format("YYYY-MM-DD HH:mm:ss"),
-    },
   ];
 
   const getStocks = () => {
@@ -226,6 +227,29 @@ export default function HomePage() {
     }
   }, [filters, totalData]);
 
+  const busy = running || singleAnalyzing;
+
+  const submitAnalyzeSingle = (): Promise<void> => {
+    const code = singleStockInput.trim();
+    if (!code) {
+      message.warning("请输入股票代码");
+      return Promise.reject(new Error("empty"));
+    }
+    setSingleAnalyzing(true);
+    message.success(`已将 ${code} 加入分析，请稍候`);
+    return analysisApi
+      .analyzeSingle(code)
+      .then((res) => {
+        message.success(`分析完成，共写入 ${res.result_count ?? 0} 条结果`);
+        setSingleModalOpen(false);
+        setSingleStockInput("");
+        getStocks();
+      })
+      .finally(() => {
+        setSingleAnalyzing(false);
+      });
+  };
+
   return (
     <div>
       <Typography>
@@ -234,25 +258,38 @@ export default function HomePage() {
         <Paragraph>
           当前同花顺人气前200新增的股票，比较的是上次的前200和现在的前200。
         </Paragraph>
-        <Paragraph>数据仅保留14天</Paragraph>
+        <Paragraph>数据仅保留14天。</Paragraph>
       </Typography>
-      <Space>
+      <Space wrap>
         <Button
           type="primary"
-          disabled={running}
+          disabled={busy}
+          loading={running}
           onClick={() => {
             setRunning(true);
             message.success("开始获取新增人气股票");
-            analysisApi.runAll().then((res) => {
-              message.success(
-                `获取完成,成功获取到${res.analysis.result_count}条数据`,
-              );
-              getStocks();
-              setRunning(false);
-            });
+            analysisApi
+              .runAll()
+              .then((res) => {
+                message.success(
+                  `获取完成,成功获取到${res.analysis.result_count}条数据`,
+                );
+                getStocks();
+              })
+              .finally(() => {
+                setRunning(false);
+              });
           }}
         >
           获取新增人气股票
+        </Button>
+        <Button
+          disabled={busy}
+          loading={singleAnalyzing}
+          onClick={() => setSingleModalOpen(true)}
+          type="primary"
+        >
+          分析单只股票
         </Button>
         <span>时间:</span>
 
@@ -269,6 +306,32 @@ export default function HomePage() {
           }}
         ></RangePicker>
       </Space>
+
+      <Modal
+        title="分析单只股票"
+        open={singleModalOpen}
+        confirmLoading={singleAnalyzing}
+        okText="开始分析"
+        cancelText="取消"
+        destroyOnHidden
+        maskClosable={!singleAnalyzing}
+        closable={!singleAnalyzing}
+        onCancel={() => {
+          if (!singleAnalyzing) {
+            setSingleModalOpen(false);
+          }
+        }}
+        onOk={() => submitAnalyzeSingle()}
+        afterClose={() => setSingleStockInput("")}
+      >
+        <Input
+          placeholder="6位代码或完整代码，如 688353 / 002155.SZ（可不写后缀）"
+          value={singleStockInput}
+          disabled={singleAnalyzing}
+          onChange={(e) => setSingleStockInput(e.target.value)}
+          onPressEnter={() => void submitAnalyzeSingle()}
+        />
+      </Modal>
 
       <Table
         dataSource={data}

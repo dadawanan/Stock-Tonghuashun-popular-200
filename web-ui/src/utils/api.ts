@@ -68,9 +68,27 @@ export const popularityApi = {
   compareLatest: () => http.post<PopularityComparison>('/api/popularity/compare-latest'),
 };
 
+export interface AnalyzeApiData {
+  result_count: number;
+  stocks: string[];
+  fetch_result?: {
+    run_id: number;
+    stock_count: number;
+    news_count: number;
+    market_count: number;
+  };
+  results?: unknown[];
+  message?: string;
+}
+
 export const analysisApi = {
-  runAll: () => http.post('/api/run-all'),
-  
+  runAll: () => http.post<{ analysis: AnalyzeApiData } & Record<string, unknown>>('/api/run-all'),
+
+  analyzeSingle: (stockCode: string) =>
+    http.post<AnalyzeApiData>(
+      `/api/analyze?stock_code=${encodeURIComponent(stockCode.trim())}`,
+    ),
+
   analyzeNewEntries: () => http.post('/api/analyze/new-entries'),
   
   getList: (limit: number = 200) => http.get<AnalysisResult[]>('/api/analysis', {

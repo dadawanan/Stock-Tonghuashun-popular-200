@@ -18,7 +18,8 @@ DEFAULT_HEADERS = {
     ),
     "Referer": "https://quote.eastmoney.com/",
 }
-QUOTE_FIELDS = "f43,f44,f45,f46,f47,f48,f50,f168,f169,f170,f171"
+# f58 为证券简称；缺少则 quote 里 stock_name 恒为空
+QUOTE_FIELDS = "f43,f44,f45,f46,f47,f48,f50,f58,f168,f169,f170,f171"
 DEFAULT_BENCHMARKS = {
     "SH": [("1.000001", "上证指数"), ("0.399001", "深证成指")],
     "SZ": [("0.399001", "深证成指"), ("1.000001", "上证指数")],
@@ -151,8 +152,15 @@ def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
     for attempt in range(1, 4):
         try:
             latest = ak.stock_individual_fund_flow(stock=digits, market=market).tail(1).iloc[0]
+            raw_date = latest.get("日期")
+            flow_date = None
+            if raw_date is not None:
+                try:
+                    flow_date = None if pd.isna(raw_date) else raw_date
+                except TypeError:
+                    flow_date = raw_date
             return {
-                "flow_date": latest.get("日期"),
+                "flow_date": flow_date,
                 "main_net_inflow": float(latest.get("主力净流入-净额", 0.0)),
                 "main_net_inflow_ratio": float(latest.get("主力净流入-净占比", 0.0)),
             }

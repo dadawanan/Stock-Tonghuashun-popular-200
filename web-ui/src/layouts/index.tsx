@@ -8,20 +8,24 @@ const { Header, Content } = Layout;
 const navKeys = {
   analysis: "/",
   simAccount: "/sim-account",
+  changelog: "/changelog",
 } as const;
 
 const menuItems: MenuProps["items"] = [
   { key: navKeys.analysis, label: "股票分析" },
   { key: navKeys.simAccount, label: "模拟账户模块" },
+  { key: navKeys.changelog, label: "更新日志" },
 ];
 
 export default function RootLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const selectedKey = pathname.startsWith(navKeys.simAccount)
-    ? navKeys.simAccount
-    : navKeys.analysis;
+  const selectedKey = pathname.startsWith(navKeys.changelog)
+    ? navKeys.changelog
+    : pathname.startsWith(navKeys.simAccount)
+      ? navKeys.simAccount
+      : navKeys.analysis;
 
   return (
     <Layout className={styles.root}>

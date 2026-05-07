@@ -49,7 +49,11 @@ def build_stock_rows(stocks_df: pd.DataFrame) -> list[dict[str, Any]]:
             "stock_name": row["stock_name"],
             "source_latest_price": pd.to_numeric(row.get("source_latest_price"), errors="coerce") if pd.notna(row.get("source_latest_price")) else None,
             "source_pct_change": pd.to_numeric(row.get("source_pct_change"), errors="coerce") if pd.notna(row.get("source_pct_change")) else None,
-            "market_code": row.get("market_code"),
+            "market_code": (
+                None
+                if (mc := row.get("market_code")) is None or pd.isna(mc)
+                else mc
+            ),
         }
         for _, row in stocks_df.iterrows()
     ]

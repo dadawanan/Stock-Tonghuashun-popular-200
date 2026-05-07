@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,25 @@ import pandas as pd
 from stock_service.application.services.popularity_service import build_stock_rows
 from stock_service.infrastructure.db.database import StockDatabase
 from stock_service.infrastructure.providers.eastmoney_provider import benchmark_pct_change, fetch_latest_fund_flow, fetch_news_rows, fetch_quote, normalize_stock_code
+
+
+def _to_optional_db_date(value: Any) -> date | None:
+    """资金流等字段可能是 pandas NaN/NaT，asyncpg 写入 DATE 需要 datetime.date 或 None。"""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        pass
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    ts = pd.to_datetime(value, errors="coerce")
+    if pd.isna(ts):
+        return None
+    return ts.date()
 
 
 def read_stock_pool(stocks_file: Path) -> pd.DataFrame:
@@ -64,6 +84,7 @@ async def fetch_market_to_db(db: StockDatabase, stocks_df: pd.DataFrame, run_id:
         except Exception as exc:
             print(f"[market] {stock_code} 资金流获取失败: {exc}")
             fund_flow = {"flow_date": None, "main_net_inflow": 0.0, "main_net_inflow_ratio": 0.0}
+        flow_date = _to_optional_db_date(fund_flow.get("flow_date"))
         benchmark_pct = None
         relative_strength = None
         try:
@@ -76,12 +97,12 @@ async def fetch_market_to_db(db: StockDatabase, stocks_df: pd.DataFrame, run_id:
             "run_id": run_id,
             "stock_code": stock_code,
             "stock_name": row["stock_name"],
-            "trade_date": fund_flow.get("flow_date"),
+            "trade_date": flow_date,
             "snapshot_time": pd.Timestamp.now(tz="Asia/Shanghai").to_pydatetime(),
             **quote,
             "main_net_inflow": fund_flow.get("main_net_inflow", 0.0),
             "main_net_inflow_ratio": fund_flow.get("main_net_inflow_ratio", 0.0),
-            "fund_flow_date": fund_flow.get("flow_date"),
+            "fund_flow_date": flow_date,
             "benchmark_code": "AUTO",
             "benchmark_name": "AUTO",
             "benchmark_pct_change": benchmark_pct,
