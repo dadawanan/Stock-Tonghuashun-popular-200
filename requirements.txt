@@ -1,0 +1,7 @@
+akshare>=1.18.59
+asyncpg>=0.31.0
+fastapi>=0.136.1
+pandas>=2.2.3
+pywencai>=0.13.1
+requests>=2.32.3
+uvicorn>=0.46.0
