@@ -14,6 +14,19 @@
 
 ---
 
+## 2025-05-10 | 决策 | 引入 SQLAlchemy 异步 ORM，逐步替换 asyncpg 原生 SQL
+
+- **类型**：决策
+- **规则/决策**：在 `src/stock_service/db/` 下新建 SQLAlchemy 异步数据库模块，与现有 `infrastructure/db/`（asyncpg 原生 SQL）并存，逐步替换
+- **原因**：原生 SQL 维护成本高、缺少类型安全，SQLAlchemy ORM 可提供模型约束和查询抽象，降低后续开发复杂度
+- **影响**：
+  - 新增 `src/stock_service/db/database.py`（异步引擎、SessionFactory、get_async_session）
+  - 依赖添加 `sqlalchemy[asyncio]>=2.0.0`
+  - 复用 `settings.DATABASE_CONFIG` 构建连接串，两套模块共享配置
+  - 后续新建 ORM 模型和 Repository 应放在 `db/` 下，逐步迁移 `infrastructure/db/repositories/`
+
+---
+
 <!-- 追加模板
 
 ## YYYY-MM-DD | 类型 | 标题

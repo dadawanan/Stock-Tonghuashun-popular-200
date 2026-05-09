@@ -16,6 +16,7 @@ dependencies = [
     "pywencai>=0.13.1",
     "requests>=2.32.3",
     "uvicorn>=0.46.0",
+    "sqlalchemy[asyncio]>=2.0.0",
 ]
 
 [project.scripts]
