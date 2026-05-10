@@ -10,6 +10,7 @@ from sqlalchemy import (
     Numeric,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy import Index as _Index
@@ -33,10 +34,10 @@ class PipelineRun(Base):
     analysis_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="running")
     error_message: Mapped[Optional[str]] = mapped_column(Text)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         CheckConstraint(
@@ -65,8 +66,8 @@ class StockMaster(Base):
     is_st: Mapped[bool] = mapped_column(nullable=False, default=False)
     listed_date: Mapped[Optional[date]] = mapped_column(Date)
     status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         CheckConstraint("market IN ('SH', 'SZ', 'BJ')", name="chk_stock_market"),
@@ -94,7 +95,7 @@ class PopularitySnapshot(Base):
     previous_rank: Mapped[Optional[int]] = mapped_column(Integer)
     rank_change: Mapped[Optional[int]] = mapped_column(Integer)
     raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         UniqueConstraint("trade_date", "snapshot_time", "stock_code", "source", name="uq_popularity_snapshot"),
@@ -118,10 +119,10 @@ class NewsArticle(Base):
     summary: Mapped[Optional[str]] = mapped_column(Text)
     url: Mapped[Optional[str]] = mapped_column(Text)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB)
     content_hash: Mapped[Optional[str]] = mapped_column(VARCHAR(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("uq_news_article_stock_url", "stock_code", "url", unique=True, postgresql_where=text("url IS NOT NULL")),
@@ -163,7 +164,7 @@ class MarketSnapshot(Base):
     source_latest_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4))
     source_pct_change: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
     raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("idx_market_snapshot_stock_time", "stock_code", "snapshot_time"),
@@ -197,8 +198,8 @@ class NewsAnalysis(Base):
     bearish_logic: Mapped[Optional[str]] = mapped_column(Text)
     extracted_entities: Mapped[Optional[dict]] = mapped_column(JSONB)
     analysis_json: Mapped[Optional[dict]] = mapped_column(JSONB)
-    analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         CheckConstraint("analyzer_type IN ('rule', 'llm', 'hybrid')", name="chk_news_analysis_type"),
@@ -238,8 +239,8 @@ class StockAnalysisSnapshot(Base):
     integrated_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
     decision: Mapped[Optional[str]] = mapped_column(Text)
     reasoning_json: Mapped[Optional[dict]] = mapped_column(JSONB)
-    analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("uq_stock_analysis_snapshot_run_stock", "run_id", "stock_code", unique=True, postgresql_where=text("run_id IS NOT NULL")),
