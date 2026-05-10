@@ -37,6 +37,20 @@
   - `db/__init__.py` 改为惰性导入，避免模块级 env var 校验阻塞 models 子包加载
   - 模型不定义 relationship，后续按需添加；不创建新表，仅映射现有表
 
+## 2026-05-10 | 决策 | 创建 CRUD 层，路由数据库操作迁移至 crud 模块
+
+- **类型**：决策
+- **规则/决策**：在 `src/stock_service/crud/` 下创建 CRUD 层，所有数据库表的读/写操作封装为 `async def` 函数，接受 `AsyncSession` 参数，使用 SQLAlchemy ORM 查询。路由通过 `Depends(get_session)` 注入会话后调用 CRUD 函数
+- **原因**：解耦路由和数据库操作，遵循系统规则「禁止在 router 中写业务逻辑」的延伸——路由不直接写 SQL，也不直接操作 ORM session
+- **影响**：
+  - 新增 `src/stock_service/crud/v2_crud.py`（16 个函数，覆盖 pipeline_run、stock_master、popularity_snapshot、news_article、market_snapshot、news_analysis、stock_analysis_snapshot）
+  - 新增 `src/stock_service/crud/quant_crud.py`（8 个占位函数，量化表暂未接入）
+  - `api/dependencies.py` 新增 `get_session()` 依赖，产出 `AsyncSession`
+  - `api/routes/query.py` 全部 4 个端点改用 CRUD
+  - `api/routes/popularity.py` 2 个读端点改用 CRUD
+  - `api/routes/analysis.py` 2 个端点改用 CRUD（api_run_all 和 _fetch_then_analyze 仍用 StockDatabase，待服务层迁移）
+  - CRUD 返回 `list[dict]` 与现有 `ApiResponse` 兼容，后续可逐步改为 Pydantic 模型
+
 ---
 
 <!-- 追加模板
