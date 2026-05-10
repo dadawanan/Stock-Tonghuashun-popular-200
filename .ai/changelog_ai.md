@@ -25,6 +25,18 @@
   - 复用 `settings.DATABASE_CONFIG` 构建连接串，两套模块共享配置
   - 后续新建 ORM 模型和 Repository 应放在 `db/` 下，逐步迁移 `infrastructure/db/repositories/`
 
+## 2026-05-10 | 决策 | 创建全部 14 张表的 SQLAlchemy ORM 模型
+
+- **类型**：决策
+- **规则/决策**：在 `src/stock_service/db/models/` 下建立 SQLAlchemy 2.0 声明式模型，覆盖 `schema_v2.sql`（7 张主表）和 `schema_quant_v1.sql`（7 张量化表），表名、列类型、约束、索引严格对标现有 DDL
+- **原因**：为后续逐步替换 asyncpg 原生 SQL 提供数据对象基础，模型先行、替换后行
+- **影响**：
+  - 新增 `src/stock_service/db/models/__init__.py`（AsyncAttrs + DeclarativeBase）
+  - 新增 `src/stock_service/db/models/v2_models.py`（PipelineRun、StockMaster 等 7 模型）
+  - 新增 `src/stock_service/db/models/quant_models.py`（StockBasic、StockDaily 等 7 模型）
+  - `db/__init__.py` 改为惰性导入，避免模块级 env var 校验阻塞 models 子包加载
+  - 模型不定义 relationship，后续按需添加；不创建新表，仅映射现有表
+
 ---
 
 <!-- 追加模板
