@@ -4,13 +4,13 @@ from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from stock_service.crud import v2_crud
 from stock_service.domain.services.analysis_rules import aggregate_news, analyze_market_behavior, analyze_news_records, normalize_stock_code, synthesize_decision
-from stock_service.infrastructure.db.database import StockDatabase
 
 
 def _series_max_non_na(series: pd.Series) -> Any:
-    """空序列或非数值列上 pandas .max() 会得到 float nan，不能写入 PG DATE/TIMESTAMP。"""
     clean = series.dropna()
     if clean.empty:
         return None
@@ -53,13 +53,13 @@ def _to_sql_datetime(val: Any) -> datetime | None:
     return None if pd.isna(ts) else ts.to_pydatetime()
 
 
-async def run_analysis(db: StockDatabase, stock_codes: list[str] | None = None) -> tuple[list[dict[str, object]], dict[str, object]]:
-    stocks = await db.get_all_stocks()
+async def run_analysis(session: AsyncSession, stock_codes: list[str] | None = None) -> tuple[list[dict[str, object]], dict[str, object]]:
+    stocks = await v2_crud.get_all_stocks(session)
     if not stocks:
         raise ValueError("数据库中没有股票数据，请先抓取榜单")
     base_df = pd.DataFrame(stocks)
-    news_df = pd.DataFrame(await db.get_all_news())
-    market_df = pd.DataFrame(await db.get_market_data())
+    news_df = pd.DataFrame(await v2_crud.get_all_news(session))
+    market_df = pd.DataFrame(await v2_crud.get_market_data(session))
     if stock_codes:
         normalized_codes = {normalize_stock_code(code) for code in stock_codes}
         base_df = base_df[base_df["stock_code"].isin(normalized_codes)].copy()
@@ -97,13 +97,13 @@ async def run_analysis(db: StockDatabase, stock_codes: list[str] | None = None) 
     return result.to_dict("records"), result.attrs
 
 
-async def store_analysis_results(db: StockDatabase, results: list[dict[str, Any]], meta: dict[str, Any], *, run_type: str, source: str = "rule") -> int:
-    run_id = await db.create_pipeline_run(run_type=run_type, source=source)
+async def store_analysis_results(session: AsyncSession, results: list[dict[str, Any]], meta: dict[str, Any], *, run_type: str, source: str = "rule") -> int:
+    run_id = await v2_crud.create_pipeline_run(session, run_type=run_type, source=source)
     try:
         news_analysis_rows = meta.get("news_analysis_rows", [])
         article_ids = [row["article_id"] for row in news_analysis_rows if row.get("article_id") is not None]
         if news_analysis_rows:
-            await db.replace_news_analysis_batch(run_id, news_analysis_rows, article_ids)
+            await v2_crud.replace_news_analysis_batch(session, run_id, news_analysis_rows, article_ids)
         for row in results:
             row["run_id"] = run_id
             row["trade_date"] = meta.get("latest_trade_date")
@@ -114,17 +114,16 @@ async def store_analysis_results(db: StockDatabase, results: list[dict[str, Any]
                 "behavior_label": row.get("behavior_label"),
                 "decision": row.get("decision"),
             }
-        count = await db.insert_stock_analysis_batch(results)
-        await db.complete_pipeline_run(run_id, status="success", analysis_count=count)
+        count = await v2_crud.insert_stock_analysis_batch(session, results)
+        await v2_crud.complete_pipeline_run(session, run_id, status="success", analysis_count=count)
         return count
     except Exception as exc:
-        await db.complete_pipeline_run(run_id, status="failed", error_message=str(exc))
+        await v2_crud.complete_pipeline_run(session, run_id, status="failed", error_message=str(exc))
         raise
 
 
-async def run_and_store(db: StockDatabase, stock_codes: list[str] | None = None) -> int:
-    results, meta = await run_analysis(db, stock_codes=stock_codes)
-    count = await store_analysis_results(db, results, meta, run_type="analyze", source="rule")
+async def run_and_store(session: AsyncSession, stock_codes: list[str] | None = None) -> int:
+    results, meta = await run_analysis(session, stock_codes=stock_codes)
+    count = await store_analysis_results(session, results, meta, run_type="analyze", source="rule")
     print(f"[analysis] 写入 {count} 条分析结果")
     return count
-

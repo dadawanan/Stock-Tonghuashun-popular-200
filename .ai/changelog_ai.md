@@ -51,6 +51,21 @@
   - `api/routes/analysis.py` 2 个端点改用 CRUD（api_run_all 和 _fetch_then_analyze 仍用 StockDatabase，待服务层迁移）
   - CRUD 返回 `list[dict]` 与现有 `ApiResponse` 兼容，后续可逐步改为 Pydantic 模型
 
+## 2026-05-10 | 决策 | 完成 asyncpg → SQLAlchemy ORM 全量迁移，删除旧 infrastructure/db/
+
+- **类型**：决策
+- **规则/决策**：application services 层、CLI 入口（main.py）、API routes、dependencies 全部切换至 `AsyncSession` + `v2_crud`，删除 `infrastructure/db/`（asyncpg 原生 SQL 模块）
+- **原因**：双轨并存造成维护负担，API 路由已先期切换，剩余服务层和 CLI 仍依赖旧 StockDatabase，统一消除技术债务
+- **影响**：
+  - `v2_crud.py` 补全 `insert_news_batch`、`insert_market_batch`；修正 `upsert_stocks`（推导 market/code_digits/is_st）、`get_all_news`（limit_per_stock 窗口）、`get_market_data`（DISTINCT ON per stock）
+  - `popularity_service.py` / `market_data_service.py` / `analysis_service.py` / `pipeline_service.py` 所有函数从 `db: StockDatabase` 改为 `session: AsyncSession`
+  - `popularity_service.run_popularity_pipeline()` 和 `market_data_service.run_fetch_pipeline_for_rows()` 不再内部创建/销毁连接，由调用方注入 session
+  - `dependencies.py` 移除 `StockDatabase`、`_db` 全局单例、`get_db()`；lifespan 简化为空
+  - `api/routes/analysis.py` 移除 `get_db()` 调用，`api_run_all` 改为 `Depends(get_session)`
+  - `api/routes/health.py` 移除数据库探活，改为静态就绪检查
+  - `main.py` CLI 改用 `AsyncSessionFactory()` 上下文管理器
+  - 删除 `infrastructure/db/` 全部 9 个文件（database.py、database_utils.py、repositories/*）
+
 ---
 
 <!-- 追加模板

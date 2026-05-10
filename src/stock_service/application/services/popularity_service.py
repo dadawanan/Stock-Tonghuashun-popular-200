@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.infrastructure.db.database import StockDatabase
+from stock_service.crud import v2_crud
 from stock_service.infrastructure.providers.eastmoney_provider import normalize_stock_code
 from stock_service.infrastructure.providers.ths_provider import fetch_top_200_popularity
 
@@ -115,30 +116,19 @@ async def fetch_popularity_stock_pool() -> pd.DataFrame:
     return standardize_popularity_frame(fetch_top_200_popularity())
 
 
-async def run_popularity_pipeline() -> dict[str, Any]:
-    db = StockDatabase()
-    await db.initialize()
-    run_id: int | None = None
-    try:
-        stocks_df = await fetch_popularity_stock_pool()
-        if stocks_df.empty:
-            raise ValueError("未获取到同花顺人气前200数据")
-        now = pd.Timestamp.now(tz="Asia/Shanghai")
-        trade_date = now.date()
-        previous_times = await db.get_latest_popularity_snapshot_times(limit=1)
-        previous_rows = await db.get_popularity_snapshot_by_time(previous_times[0]) if previous_times else []
-        run_id = await db.create_pipeline_run(run_type="fetch", source="ths_pywencai", trade_date=trade_date, snapshot_time=now.to_pydatetime())
-        stock_rows = build_stock_rows(stocks_df)
-        stock_count = await db.upsert_stocks(stock_rows)
-        popularity_rows = build_popularity_rows(stocks_df, previous_rows, run_id=run_id, trade_date=trade_date, snapshot_time=now.to_pydatetime())
-        await db.insert_popularity_batch(popularity_rows)
-        comparison = compare_stock_sets(previous_rows, popularity_rows)
-        await db.complete_pipeline_run(run_id, status="success", stock_count=stock_count)
-        return {"run_id": run_id, "trade_date": trade_date.isoformat(), "snapshot_time": now.isoformat(), "stock_count": stock_count, "new_entry_count": len(comparison["new_entries"]), "data": popularity_rows, "comparison": comparison}
-    except Exception as exc:
-        if run_id is not None:
-            await db.complete_pipeline_run(run_id, status="failed", error_message=str(exc))
-        raise
-    finally:
-        await db.close()
-
+async def run_popularity_pipeline(session: AsyncSession) -> dict[str, Any]:
+    stocks_df = await fetch_popularity_stock_pool()
+    if stocks_df.empty:
+        raise ValueError("未获取到同花顺人气前200数据")
+    now = pd.Timestamp.now(tz="Asia/Shanghai")
+    trade_date = now.date()
+    previous_times = await v2_crud.get_latest_popularity_snapshot_times(session, limit=1)
+    previous_rows = await v2_crud.get_popularity_snapshot_by_time(session, previous_times[0]) if previous_times else []
+    run_id = await v2_crud.create_pipeline_run(session, run_type="fetch", source="ths_pywencai", trade_date=trade_date, snapshot_time=now.to_pydatetime())
+    stock_rows = build_stock_rows(stocks_df)
+    stock_count = await v2_crud.upsert_stocks(session, stock_rows)
+    popularity_rows = build_popularity_rows(stocks_df, previous_rows, run_id=run_id, trade_date=trade_date, snapshot_time=now.to_pydatetime())
+    await v2_crud.insert_popularity_batch(session, popularity_rows)
+    comparison = compare_stock_sets(previous_rows, popularity_rows)
+    await v2_crud.complete_pipeline_run(session, run_id, status="success", stock_count=stock_count)
+    return {"run_id": run_id, "trade_date": trade_date.isoformat(), "snapshot_time": now.isoformat(), "stock_count": stock_count, "new_entry_count": len(comparison["new_entries"]), "data": popularity_rows, "comparison": comparison}
