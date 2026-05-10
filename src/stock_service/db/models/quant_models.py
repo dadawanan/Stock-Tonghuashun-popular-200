@@ -1,0 +1,155 @@
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Integer,
+    Numeric,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy import Index as _Index
+from sqlalchemy.dialects.postgresql import BIGINT, VARCHAR
+from sqlalchemy.orm import Mapped, mapped_column
+
+from . import Base
+
+
+class StockBasic(Base):
+    __tablename__ = "stock_basic"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, unique=True)
+    name: Mapped[Optional[str]] = mapped_column(VARCHAR(64))
+    market: Mapped[Optional[str]] = mapped_column(VARCHAR(16))
+    industry: Mapped[Optional[str]] = mapped_column(VARCHAR(64))
+    list_date: Mapped[Optional[date]] = mapped_column(Date)
+    status: Mapped[Optional[str]] = mapped_column(VARCHAR(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        _Index("idx_stock_basic_market", "market"),
+    )
+
+
+class StockDaily(Base):
+    __tablename__ = "stock_daily"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    open: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    high: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    low: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    close: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    volume: Mapped[Optional[int]] = mapped_column(BIGINT)
+    amount: Mapped[Optional[int]] = mapped_column(BIGINT)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date", name="uq_stock_daily_code_date"),
+        _Index("idx_stock_daily_code_date", "code", "trade_date"),
+    )
+
+
+class StockIndicator(Base):
+    __tablename__ = "stock_indicator"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ma5: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    ma20: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    rsi: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    macd: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date", name="uq_stock_indicator_code_date"),
+        _Index("idx_stock_indicator_code_date", "code", "trade_date"),
+    )
+
+
+class StrategyPick(Base):
+    __tablename__ = "strategy_pick"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    strategy_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    score: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        _Index("idx_strategy_pick_strategy_date", "strategy_id", "trade_date"),
+        _Index("idx_strategy_pick_code", "code"),
+    )
+
+
+class BacktestResult(Base):
+    __tablename__ = "backtest_result"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    strategy_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    annual_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    max_drawdown: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    sharpe: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    win_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        _Index("idx_backtest_result_strategy", "strategy_id", "created_at"),
+    )
+
+
+class TradeOrder(Base):
+    __tablename__ = "trade_order"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    side: Mapped[str] = mapped_column(VARCHAR(8), nullable=False)
+    price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    quantity: Mapped[Optional[int]] = mapped_column(Integer)
+    status: Mapped[Optional[str]] = mapped_column(VARCHAR(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        _Index("idx_trade_order_account_time", "account_id", "created_at"),
+        _Index("idx_trade_order_code", "code"),
+    )
+
+
+class PositionAccount(Base):
+    __tablename__ = "position_account"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    quantity: Mapped[Optional[int]] = mapped_column(Integer)
+    avg_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "code", name="uq_position_account"),
+        _Index("idx_position_account_id", "account_id"),
+    )
+
+
+__all__ = [
+    "StockBasic",
+    "StockDaily",
+    "StockIndicator",
+    "StrategyPick",
+    "BacktestResult",
+    "TradeOrder",
+    "PositionAccount",
+]

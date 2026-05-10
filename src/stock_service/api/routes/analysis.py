@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.api.dependencies import get_db
+from stock_service.api.dependencies import get_session
 from stock_service.application.services.analysis_service import run_analysis, store_analysis_results
 from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
 from stock_service.application.services.pipeline_service import run_all_pipeline
+from stock_service.crud import v2_crud
 from stock_service.domain.services.analysis_rules import normalize_stock_code
 from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
 from stock_service.schemas.responses import ApiResponse
@@ -18,13 +20,11 @@ logger = logging.getLogger("stock-api")
 router = APIRouter(tags=["analysis"])
 
 
-async def _fetch_then_analyze(stock_rows: list[dict[str, Any]], *, fetch_source: str) -> ApiResponse:
-    """先按行抓取新闻/行情并 upsert，再对给定股票代码集合做规则分析并入库。"""
-    db = await get_db()
-    fetch_result = await run_fetch_pipeline_for_rows(stock_rows, run_type="fetch", source=fetch_source)
+async def _fetch_then_analyze(session: AsyncSession, stock_rows: list[dict[str, Any]], *, fetch_source: str) -> ApiResponse:
+    fetch_result = await run_fetch_pipeline_for_rows(session, stock_rows, run_type="fetch", source=fetch_source)
     stock_codes = [normalize_stock_code(row["stock_code"]) for row in stock_rows]
-    results, meta = await run_analysis(db, stock_codes=stock_codes)
-    count = await store_analysis_results(db, results, meta, run_type="analyze", source="rule")
+    results, meta = await run_analysis(session, stock_codes=stock_codes)
+    count = await store_analysis_results(session, results, meta, run_type="analyze", source="rule")
     return ApiResponse(
         data={
             "result_count": count,
@@ -41,14 +41,14 @@ async def api_analyze(
         str | None,
         Query(description="可选。传入则仅抓取并分析该股票；不传则分析最近一次榜单新增股票（与原行为一致）"),
     ] = None,
+    session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     trimmed = (stock_code or "").strip()
     if not trimmed:
-        return await api_analyze_new_entries()
+        return await api_analyze_new_entries(session=session)
     try:
         normalized = normalize_stock_code(trimmed)
-        db = await get_db()
-        stocks = await db.get_all_stocks()
+        stocks = await v2_crud.get_all_stocks(session)
         match = next((s for s in stocks if normalize_stock_code(s["stock_code"]) == normalized), None)
         stock_name = str((match or {}).get("stock_name") or "").strip()
         if not stock_name:
@@ -63,30 +63,30 @@ async def api_analyze(
             "source_pct_change": None,
             "market_code": (match or {}).get("market_code"),
         }
-        return await _fetch_then_analyze([row], fetch_source="single_stock")
+        return await _fetch_then_analyze(session, [row], fetch_source="single_stock")
     except Exception as exc:
         logger.exception("analyze 单股失败 stock_code=%s", trimmed)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/api/analyze/new-entries", response_model=ApiResponse)
-async def api_analyze_new_entries() -> ApiResponse:
+async def api_analyze_new_entries(
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse:
     try:
-        db = await get_db()
-        new_entries = await db.get_latest_new_entries()
+        new_entries = await v2_crud.get_latest_new_entries(session)
         if not new_entries:
             return ApiResponse(data={"result_count": 0, "stocks": [], "message": "最近一次榜单没有新增股票"})
-        return await _fetch_then_analyze(new_entries, fetch_source="ths_new_entries")
+        return await _fetch_then_analyze(session, new_entries, fetch_source="ths_new_entries")
     except Exception as exc:
         logger.exception("analyze new entries 失败")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/api/run-all", response_model=ApiResponse)
-async def api_run_all() -> ApiResponse:
+async def api_run_all(session: AsyncSession = Depends(get_session)) -> ApiResponse:
     try:
-        db = await get_db()
-        return ApiResponse(data=await run_all_pipeline(db))
+        return ApiResponse(data=await run_all_pipeline(session))
     except Exception as exc:
         logger.exception("run-all 失败")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

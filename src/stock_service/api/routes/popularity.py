@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.api.dependencies import get_db
+from stock_service.api.dependencies import get_session
 from stock_service.application.services.popularity_service import compare_stock_sets, run_popularity_pipeline
+from stock_service.crud import v2_crud
 from stock_service.schemas.responses import ApiResponse
 
 
@@ -23,10 +25,11 @@ async def api_popularity_fetch() -> ApiResponse:
 
 
 @router.get("/api/popularity/latest", response_model=ApiResponse)
-async def api_popularity_latest() -> ApiResponse:
+async def api_popularity_latest(
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse:
     try:
-        db = await get_db()
-        rows = await db.get_latest_popularity_snapshot()
+        rows = await v2_crud.get_latest_popularity_snapshot(session)
         return ApiResponse(
             data={
                 "snapshot_time": rows[0]["snapshot_time"] if rows else None,
@@ -40,14 +43,15 @@ async def api_popularity_latest() -> ApiResponse:
 
 
 @router.post("/api/popularity/compare-latest", response_model=ApiResponse)
-async def api_popularity_compare_latest() -> ApiResponse:
+async def api_popularity_compare_latest(
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse:
     try:
-        db = await get_db()
-        snapshot_times = await db.get_latest_popularity_snapshot_times(limit=2)
+        snapshot_times = await v2_crud.get_latest_popularity_snapshot_times(session, limit=2)
         if len(snapshot_times) < 2:
             raise HTTPException(status_code=400, detail="至少需要两次榜单快照才能比较")
-        current_rows = await db.get_popularity_snapshot_by_time(snapshot_times[0])
-        previous_rows = await db.get_popularity_snapshot_by_time(snapshot_times[1])
+        current_rows = await v2_crud.get_popularity_snapshot_by_time(session, snapshot_times[0])
+        previous_rows = await v2_crud.get_popularity_snapshot_by_time(session, snapshot_times[1])
         return ApiResponse(
             data={
                 "current_snapshot_time": snapshot_times[0],
@@ -65,4 +69,3 @@ async def api_popularity_compare_latest() -> ApiResponse:
 @router.post("/api/fetch", response_model=ApiResponse)
 async def api_fetch() -> ApiResponse:
     return await api_popularity_fetch()
-

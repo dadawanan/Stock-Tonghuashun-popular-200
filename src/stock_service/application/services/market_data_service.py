@@ -6,14 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.application.services.popularity_service import build_stock_rows
-from stock_service.infrastructure.db.database import StockDatabase
+from stock_service.crud import v2_crud
 from stock_service.infrastructure.providers.eastmoney_provider import benchmark_pct_change, fetch_latest_fund_flow, fetch_news_rows, fetch_quote, normalize_stock_code
 
 
 def _to_optional_db_date(value: Any) -> date | None:
-    """资金流等字段可能是 pandas NaN/NaT，asyncpg 写入 DATE 需要 datetime.date 或 None。"""
     if value is None:
         return None
     try:
@@ -44,7 +44,7 @@ def read_stock_pool(stocks_file: Path) -> pd.DataFrame:
     return result.drop_duplicates(subset=["stock_code"]).reset_index(drop=True)
 
 
-async def fetch_news_to_db(db: StockDatabase, stocks_df: pd.DataFrame, run_id: int, max_news_per_stock: int = 20) -> int:
+async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int, max_news_per_stock: int = 20) -> int:
     news_rows: list[dict[str, Any]] = []
     for _, row in stocks_df.iterrows():
         try:
@@ -56,12 +56,12 @@ async def fetch_news_to_db(db: StockDatabase, stocks_df: pd.DataFrame, run_id: i
         time.sleep(0.3)
     if not news_rows:
         return 0
-    count = await db.insert_news_batch(news_rows)
-    print(f"[news] 写入 {count} 条新闻记录")
-    return count
+    await v2_crud.insert_news_batch(session, news_rows)
+    print(f"[news] 写入 {len(news_rows)} 条新闻记录")
+    return len(news_rows)
 
 
-async def fetch_market_to_db(db: StockDatabase, stocks_df: pd.DataFrame, run_id: int) -> int:
+async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int) -> int:
     market_rows: list[dict[str, Any]] = []
     for _, row in stocks_df.iterrows():
         stock_code = row["stock_code"]
@@ -113,32 +113,21 @@ async def fetch_market_to_db(db: StockDatabase, stocks_df: pd.DataFrame, run_id:
         time.sleep(0.2)
     if not market_rows:
         return 0
-    count = await db.insert_market_batch(market_rows)
-    print(f"[market] 写入 {count} 条行情记录")
-    return count
+    await v2_crud.insert_market_batch(session, market_rows)
+    print(f"[market] 写入 {len(market_rows)} 条行情记录")
+    return len(market_rows)
 
 
-async def run_fetch_pipeline_for_rows(stock_rows: list[dict[str, Any]], *, run_type: str = "fetch", source: str = "ths_pywencai") -> dict[str, Any]:
-    db = StockDatabase()
-    await db.initialize()
-    run_id: int | None = None
-    try:
-        stocks_df = pd.DataFrame(stock_rows)
-        if stocks_df.empty:
-            raise ValueError("待抓取股票列表为空")
-        now = pd.Timestamp.now(tz="Asia/Shanghai")
-        trade_date = now.date()
-        run_id = await db.create_pipeline_run(run_type=run_type, source=source, trade_date=trade_date, snapshot_time=now.to_pydatetime())
-        normalized_rows = build_stock_rows(stocks_df)
-        stock_count = await db.upsert_stocks(normalized_rows)
-        news_count = await fetch_news_to_db(db, stocks_df, run_id=run_id)
-        market_count = await fetch_market_to_db(db, stocks_df, run_id=run_id)
-        await db.complete_pipeline_run(run_id, status="success", stock_count=stock_count, news_count=news_count, market_count=market_count)
-        return {"run_id": run_id, "stock_count": stock_count, "news_count": news_count, "market_count": market_count}
-    except Exception as exc:
-        if run_id is not None:
-            await db.complete_pipeline_run(run_id, status="failed", error_message=str(exc))
-        raise
-    finally:
-        await db.close()
-
+async def run_fetch_pipeline_for_rows(session: AsyncSession, stock_rows: list[dict[str, Any]], *, run_type: str = "fetch", source: str = "ths_pywencai") -> dict[str, Any]:
+    stocks_df = pd.DataFrame(stock_rows)
+    if stocks_df.empty:
+        raise ValueError("待抓取股票列表为空")
+    now = pd.Timestamp.now(tz="Asia/Shanghai")
+    trade_date = now.date()
+    run_id = await v2_crud.create_pipeline_run(session, run_type=run_type, source=source, trade_date=trade_date, snapshot_time=now.to_pydatetime())
+    normalized_rows = build_stock_rows(stocks_df)
+    stock_count = await v2_crud.upsert_stocks(session, normalized_rows)
+    news_count = await fetch_news_to_db(session, stocks_df, run_id=run_id)
+    market_count = await fetch_market_to_db(session, stocks_df, run_id=run_id)
+    await v2_crud.complete_pipeline_run(session, run_id, status="success", stock_count=stock_count, news_count=news_count, market_count=market_count)
+    return {"run_id": run_id, "stock_count": stock_count, "news_count": news_count, "market_count": market_count}

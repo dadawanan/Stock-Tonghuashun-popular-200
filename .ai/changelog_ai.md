@@ -25,6 +25,47 @@
   - 复用 `settings.DATABASE_CONFIG` 构建连接串，两套模块共享配置
   - 后续新建 ORM 模型和 Repository 应放在 `db/` 下，逐步迁移 `infrastructure/db/repositories/`
 
+## 2026-05-10 | 决策 | 创建全部 14 张表的 SQLAlchemy ORM 模型
+
+- **类型**：决策
+- **规则/决策**：在 `src/stock_service/db/models/` 下建立 SQLAlchemy 2.0 声明式模型，覆盖 `schema_v2.sql`（7 张主表）和 `schema_quant_v1.sql`（7 张量化表），表名、列类型、约束、索引严格对标现有 DDL
+- **原因**：为后续逐步替换 asyncpg 原生 SQL 提供数据对象基础，模型先行、替换后行
+- **影响**：
+  - 新增 `src/stock_service/db/models/__init__.py`（AsyncAttrs + DeclarativeBase）
+  - 新增 `src/stock_service/db/models/v2_models.py`（PipelineRun、StockMaster 等 7 模型）
+  - 新增 `src/stock_service/db/models/quant_models.py`（StockBasic、StockDaily 等 7 模型）
+  - `db/__init__.py` 改为惰性导入，避免模块级 env var 校验阻塞 models 子包加载
+  - 模型不定义 relationship，后续按需添加；不创建新表，仅映射现有表
+
+## 2026-05-10 | 决策 | 创建 CRUD 层，路由数据库操作迁移至 crud 模块
+
+- **类型**：决策
+- **规则/决策**：在 `src/stock_service/crud/` 下创建 CRUD 层，所有数据库表的读/写操作封装为 `async def` 函数，接受 `AsyncSession` 参数，使用 SQLAlchemy ORM 查询。路由通过 `Depends(get_session)` 注入会话后调用 CRUD 函数
+- **原因**：解耦路由和数据库操作，遵循系统规则「禁止在 router 中写业务逻辑」的延伸——路由不直接写 SQL，也不直接操作 ORM session
+- **影响**：
+  - 新增 `src/stock_service/crud/v2_crud.py`（16 个函数，覆盖 pipeline_run、stock_master、popularity_snapshot、news_article、market_snapshot、news_analysis、stock_analysis_snapshot）
+  - 新增 `src/stock_service/crud/quant_crud.py`（8 个占位函数，量化表暂未接入）
+  - `api/dependencies.py` 新增 `get_session()` 依赖，产出 `AsyncSession`
+  - `api/routes/query.py` 全部 4 个端点改用 CRUD
+  - `api/routes/popularity.py` 2 个读端点改用 CRUD
+  - `api/routes/analysis.py` 2 个端点改用 CRUD（api_run_all 和 _fetch_then_analyze 仍用 StockDatabase，待服务层迁移）
+  - CRUD 返回 `list[dict]` 与现有 `ApiResponse` 兼容，后续可逐步改为 Pydantic 模型
+
+## 2026-05-10 | 决策 | 完成 asyncpg → SQLAlchemy ORM 全量迁移，删除旧 infrastructure/db/
+
+- **类型**：决策
+- **规则/决策**：application services 层、CLI 入口（main.py）、API routes、dependencies 全部切换至 `AsyncSession` + `v2_crud`，删除 `infrastructure/db/`（asyncpg 原生 SQL 模块）
+- **原因**：双轨并存造成维护负担，API 路由已先期切换，剩余服务层和 CLI 仍依赖旧 StockDatabase，统一消除技术债务
+- **影响**：
+  - `v2_crud.py` 补全 `insert_news_batch`、`insert_market_batch`；修正 `upsert_stocks`（推导 market/code_digits/is_st）、`get_all_news`（limit_per_stock 窗口）、`get_market_data`（DISTINCT ON per stock）
+  - `popularity_service.py` / `market_data_service.py` / `analysis_service.py` / `pipeline_service.py` 所有函数从 `db: StockDatabase` 改为 `session: AsyncSession`
+  - `popularity_service.run_popularity_pipeline()` 和 `market_data_service.run_fetch_pipeline_for_rows()` 不再内部创建/销毁连接，由调用方注入 session
+  - `dependencies.py` 移除 `StockDatabase`、`_db` 全局单例、`get_db()`；lifespan 简化为空
+  - `api/routes/analysis.py` 移除 `get_db()` 调用，`api_run_all` 改为 `Depends(get_session)`
+  - `api/routes/health.py` 移除数据库探活，改为静态就绪检查
+  - `main.py` CLI 改用 `AsyncSessionFactory()` 上下文管理器
+  - 删除 `infrastructure/db/` 全部 9 个文件（database.py、database_utils.py、repositories/*）
+
 ---
 
 <!-- 追加模板
