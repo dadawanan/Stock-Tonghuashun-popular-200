@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from stock_service.db.database import AsyncSessionFactory
 from stock_service.infrastructure.db.database import StockDatabase
 
 
@@ -15,6 +19,16 @@ async def get_db() -> StockDatabase:
     return _db
 
 
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionFactory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
 @asynccontextmanager
 async def lifespan(_: object):
     global _db
@@ -22,4 +36,3 @@ async def lifespan(_: object):
     await _db.initialize()
     yield
     await _db.close()
-
