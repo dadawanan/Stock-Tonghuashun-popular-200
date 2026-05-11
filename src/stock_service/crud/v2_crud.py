@@ -266,7 +266,7 @@ async def insert_market_batch(session: AsyncSession, rows: list[dict]) -> None:
 # ── NewsAnalysis ──
 
 
-async def replace_news_analysis_batch(session: AsyncSession, run_id: int, rows: list[dict], article_ids: list[int]) -> None:
+async def replace_news_analysis_batch(session: AsyncSession, run_id: int, rows: list[dict], article_ids: list[int]) -> int:
     if article_ids:
         result = await session.execute(
             select(NewsAnalysis).where(NewsAnalysis.article_id.in_(article_ids))
@@ -274,9 +274,18 @@ async def replace_news_analysis_batch(session: AsyncSession, run_id: int, rows: 
         for r in result.scalars().all():
             await session.delete(r)
         await session.flush()
+
+    seen: set[tuple] = set()
+    deduped: list[dict] = []
     for r in rows:
         r["run_id"] = run_id
+        key = (r["article_id"], r.get("analyzer_type"), r.get("model_name"), r.get("prompt_version"))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
+    for r in deduped:
         session.add(NewsAnalysis(**r))
+    return len(deduped)
 
 
 # ── StockAnalysisSnapshot ──
