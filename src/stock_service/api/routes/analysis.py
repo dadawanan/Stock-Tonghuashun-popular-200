@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.api.dependencies import get_session
+from stock_service.api.dependencies import get_current_user, get_session
 from stock_service.application.services.analysis_service import run_analysis, store_analysis_results
 from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
 from stock_service.application.services.pipeline_service import run_all_pipeline
@@ -41,6 +41,7 @@ async def api_analyze(
         str | None,
         Query(description="可选。传入则仅抓取并分析该股票；不传则分析最近一次榜单新增股票（与原行为一致）"),
     ] = None,
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     trimmed = (stock_code or "").strip()
@@ -71,6 +72,7 @@ async def api_analyze(
 
 @router.post("/api/analyze/new-entries", response_model=ApiResponse)
 async def api_analyze_new_entries(
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     try:
@@ -84,7 +86,7 @@ async def api_analyze_new_entries(
 
 
 @router.post("/api/run-all", response_model=ApiResponse)
-async def api_run_all(session: AsyncSession = Depends(get_session)) -> ApiResponse:
+async def api_run_all(current_user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> ApiResponse:
     try:
         return ApiResponse(data=await run_all_pipeline(session))
     except Exception as exc:

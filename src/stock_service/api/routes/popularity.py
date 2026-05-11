@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.api.dependencies import get_session
+from stock_service.api.dependencies import get_current_user, get_session
 from stock_service.application.services.popularity_service import compare_stock_sets, run_popularity_pipeline
 from stock_service.crud import v2_crud
 from stock_service.schemas.responses import ApiResponse
@@ -16,7 +16,7 @@ router = APIRouter(tags=["popularity"])
 
 
 @router.post("/api/popularity/fetch", response_model=ApiResponse)
-async def api_popularity_fetch() -> ApiResponse:
+async def api_popularity_fetch(current_user: dict = Depends(get_current_user)) -> ApiResponse:
     try:
         return ApiResponse(data=await run_popularity_pipeline())
     except Exception as exc:
@@ -26,6 +26,7 @@ async def api_popularity_fetch() -> ApiResponse:
 
 @router.get("/api/popularity/latest", response_model=ApiResponse)
 async def api_popularity_latest(
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     try:
@@ -44,6 +45,7 @@ async def api_popularity_latest(
 
 @router.post("/api/popularity/compare-latest", response_model=ApiResponse)
 async def api_popularity_compare_latest(
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     try:
@@ -67,5 +69,5 @@ async def api_popularity_compare_latest(
 
 
 @router.post("/api/fetch", response_model=ApiResponse)
-async def api_fetch() -> ApiResponse:
-    return await api_popularity_fetch()
+async def api_fetch(current_user: dict = Depends(get_current_user)) -> ApiResponse:
+    return await api_popularity_fetch(current_user=current_user)

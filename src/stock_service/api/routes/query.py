@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.api.dependencies import get_session
+from stock_service.api.dependencies import get_current_user, get_session
 from stock_service.crud import v2_crud
 from stock_service.schemas.responses import ApiResponse
 
@@ -15,7 +15,7 @@ router = APIRouter(tags=["query"])
 
 
 @router.get("/api/stocks", response_model=ApiResponse)
-async def api_stocks(session: AsyncSession = Depends(get_session)) -> ApiResponse:
+async def api_stocks(current_user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> ApiResponse:
     try:
         return ApiResponse(data=await v2_crud.get_all_stocks(session))
     except Exception as exc:
@@ -27,6 +27,7 @@ async def api_stocks(session: AsyncSession = Depends(get_session)) -> ApiRespons
 async def api_news(
     stock_code: str,
     limit: int = Query(default=20, le=100),
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     try:
@@ -39,6 +40,7 @@ async def api_news(
 @router.get("/api/analysis", response_model=ApiResponse)
 async def api_analysis(
     limit: int = Query(default=200, le=500),
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     try:
@@ -51,6 +53,7 @@ async def api_analysis(
 @router.get("/api/analysis/{stock_code}", response_model=ApiResponse)
 async def api_analysis_by_stock(
     stock_code: str,
+    current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     try:
