@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import time
+import asyncio
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from stock_service.application.services.popularity_service import build_stock_rows
 from stock_service.crud import v2_crud
 from stock_service.infrastructure.providers.eastmoney_provider import benchmark_pct_change, fetch_latest_fund_flow, fetch_news_rows, fetch_quote, normalize_stock_code
+
+_FETCH_SEM = asyncio.Semaphore(5)
 
 
 def _to_optional_db_date(value: Any) -> date | None:
@@ -44,16 +46,26 @@ def read_stock_pool(stocks_file: Path) -> pd.DataFrame:
     return result.drop_duplicates(subset=["stock_code"]).reset_index(drop=True)
 
 
+async def _fetch_one_stock_news(stock_code: str, stock_name: str, run_id: int, max_news_per_stock: int) -> list[dict[str, Any]]:
+    async with _FETCH_SEM:
+        items = await asyncio.to_thread(fetch_news_rows, stock_code, stock_name, max_news_per_stock)
+        for item in items:
+            item["run_id"] = run_id
+        return items
+
+
 async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int, max_news_per_stock: int = 20) -> int:
+    tasks = [
+        _fetch_one_stock_news(row["stock_code"], row["stock_name"], run_id, max_news_per_stock)
+        for _, row in stocks_df.iterrows()
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     news_rows: list[dict[str, Any]] = []
-    for _, row in stocks_df.iterrows():
-        try:
-            for item in fetch_news_rows(row["stock_code"], row["stock_name"], max_news_per_stock=max_news_per_stock):
-                item["run_id"] = run_id
-                news_rows.append(item)
-        except Exception as exc:
-            print(f"[news] {row['stock_code']} 获取失败: {exc}")
-        time.sleep(0.3)
+    for result, (_, stock_row) in zip(results, stocks_df.iterrows()):
+        if isinstance(result, Exception):
+            print(f"[news] {stock_row['stock_code']} 获取失败: {result}")
+        else:
+            news_rows.extend(result)
     if not news_rows:
         return 0
     inserted = await v2_crud.insert_news_batch(session, news_rows)
@@ -61,56 +73,72 @@ async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_i
     return inserted
 
 
-async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int) -> int:
-    market_rows: list[dict[str, Any]] = []
-    for _, row in stocks_df.iterrows():
-        stock_code = row["stock_code"]
-        source_latest_price = pd.to_numeric(row.get("source_latest_price"), errors="coerce")
-        source_pct_change = pd.to_numeric(row.get("source_pct_change"), errors="coerce")
-        quote: dict[str, Any] = {
-            "latest_price": None if pd.isna(source_latest_price) else float(source_latest_price),
-            "pct_change": None if pd.isna(source_pct_change) else float(source_pct_change),
-            "change_amount": None, "open_price": None, "high_price": None, "low_price": None,
-            "prev_close": None, "volume": None, "amount": None, "volume_ratio": None,
-            "turnover_rate": None, "amplitude": None,
-        }
-        if quote["latest_price"] is None or quote["pct_change"] is None:
+async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_latest_price: Any, source_pct_change: Any) -> dict[str, Any]:
+    async with _FETCH_SEM:
+        def _sync() -> dict[str, Any]:
+            quote: dict[str, Any] = {
+                "latest_price": None if pd.isna(source_latest_price) else float(source_latest_price),
+                "pct_change": None if pd.isna(source_pct_change) else float(source_pct_change),
+                "change_amount": None, "open_price": None, "high_price": None, "low_price": None,
+                "prev_close": None, "volume": None, "amount": None, "volume_ratio": None,
+                "turnover_rate": None, "amplitude": None,
+            }
+            if quote["latest_price"] is None or quote["pct_change"] is None:
+                try:
+                    quote.update({k: v for k, v in fetch_quote(stock_code).items() if k in quote and v is not None})
+                except Exception as exc:
+                    print(f"[market] {stock_code} 实时行情接口失败: {exc}")
             try:
-                quote.update({k: v for k, v in fetch_quote(stock_code).items() if k in quote and v is not None})
+                fund_flow = fetch_latest_fund_flow(stock_code)
             except Exception as exc:
-                print(f"[market] {stock_code} 实时行情接口失败: {exc}")
-        try:
-            fund_flow = fetch_latest_fund_flow(stock_code)
-        except Exception as exc:
-            print(f"[market] {stock_code} 资金流获取失败: {exc}")
-            fund_flow = {"flow_date": None, "main_net_inflow": 0.0, "main_net_inflow_ratio": 0.0}
-        flow_date = _to_optional_db_date(fund_flow.get("flow_date"))
-        benchmark_pct = None
-        relative_strength = None
-        try:
-            benchmark_pct = benchmark_pct_change(stock_code)
-            if quote.get("pct_change") is not None:
-                relative_strength = round(quote["pct_change"] - benchmark_pct, 4)
-        except Exception:
-            pass
-        market_rows.append({
-            "run_id": run_id,
-            "stock_code": stock_code,
-            "stock_name": row["stock_name"],
-            "trade_date": flow_date,
-            "snapshot_time": pd.Timestamp.now(tz="Asia/Shanghai").to_pydatetime(),
-            **quote,
-            "main_net_inflow": fund_flow.get("main_net_inflow", 0.0),
-            "main_net_inflow_ratio": fund_flow.get("main_net_inflow_ratio", 0.0),
-            "fund_flow_date": flow_date,
-            "benchmark_code": "AUTO",
-            "benchmark_name": "AUTO",
-            "benchmark_pct_change": benchmark_pct,
-            "relative_strength_vs_index": relative_strength,
-            "source_latest_price": quote.get("latest_price"),
-            "source_pct_change": quote.get("pct_change"),
-        })
-        time.sleep(0.2)
+                print(f"[market] {stock_code} 资金流获取失败: {exc}")
+                fund_flow = {"flow_date": None, "main_net_inflow": 0.0, "main_net_inflow_ratio": 0.0}
+            flow_date = _to_optional_db_date(fund_flow.get("flow_date"))
+            benchmark_pct = None
+            relative_strength = None
+            try:
+                benchmark_pct = benchmark_pct_change(stock_code)
+                if quote.get("pct_change") is not None:
+                    relative_strength = round(quote["pct_change"] - benchmark_pct, 4)
+            except Exception:
+                pass
+            return {
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "trade_date": flow_date,
+                **quote,
+                "main_net_inflow": fund_flow.get("main_net_inflow", 0.0),
+                "main_net_inflow_ratio": fund_flow.get("main_net_inflow_ratio", 0.0),
+                "fund_flow_date": flow_date,
+                "benchmark_code": "AUTO",
+                "benchmark_name": "AUTO",
+                "benchmark_pct_change": benchmark_pct,
+                "relative_strength_vs_index": relative_strength,
+                "source_latest_price": quote.get("latest_price"),
+                "source_pct_change": quote.get("pct_change"),
+            }
+        return await asyncio.to_thread(_sync)
+
+
+async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int) -> int:
+    tasks = [
+        _fetch_one_stock_market(
+            row["stock_code"], row["stock_name"],
+            pd.to_numeric(row.get("source_latest_price"), errors="coerce"),
+            pd.to_numeric(row.get("source_pct_change"), errors="coerce"),
+        )
+        for _, row in stocks_df.iterrows()
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    now = pd.Timestamp.now(tz="Asia/Shanghai").to_pydatetime()
+    market_rows: list[dict[str, Any]] = []
+    for result, (_, stock_row) in zip(results, stocks_df.iterrows()):
+        if isinstance(result, Exception):
+            print(f"[market] {stock_row['stock_code']} 获取失败: {result}")
+        else:
+            result["run_id"] = run_id
+            result["snapshot_time"] = now
+            market_rows.append(result)
     if not market_rows:
         return 0
     await v2_crud.insert_market_batch(session, market_rows)
@@ -127,7 +155,9 @@ async def run_fetch_pipeline_for_rows(session: AsyncSession, stock_rows: list[di
     run_id = await v2_crud.create_pipeline_run(session, run_type=run_type, source=source, trade_date=trade_date, snapshot_time=now.to_pydatetime())
     normalized_rows = build_stock_rows(stocks_df)
     stock_count = await v2_crud.upsert_stocks(session, normalized_rows)
-    news_count = await fetch_news_to_db(session, stocks_df, run_id=run_id)
-    market_count = await fetch_market_to_db(session, stocks_df, run_id=run_id)
+    news_count, market_count = await asyncio.gather(
+        fetch_news_to_db(session, stocks_df, run_id=run_id),
+        fetch_market_to_db(session, stocks_df, run_id=run_id),
+    )
     await v2_crud.complete_pipeline_run(session, run_id, status="success", stock_count=stock_count, news_count=news_count, market_count=market_count)
     return {"run_id": run_id, "stock_count": stock_count, "news_count": news_count, "market_count": market_count}

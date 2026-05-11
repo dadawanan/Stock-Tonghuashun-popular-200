@@ -193,34 +193,50 @@ async def insert_news_batch(session: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
 
-    stock_codes = list({r["stock_code"] for r in rows})
-    urls = [r["url"] for r in rows if r.get("url")]
-    hashes = [r["content_hash"] for r in rows if r.get("content_hash")]
+    # 1. batch 内部去重（按两个唯一约束）
+    seen_url: set[tuple[str, str]] = set()
+    seen_hash: set[tuple[str, str]] = set()
+    deduped: list[dict] = []
+    for r in rows:
+        url_key = (r["stock_code"], r.get("url") or "")
+        hash_key = (r["stock_code"], r.get("content_hash") or "")
+        if url_key in seen_url or hash_key in seen_hash:
+            continue
+        seen_url.add(url_key)
+        seen_hash.add(hash_key)
+        deduped.append(r)
 
-    existing_urls: set[str] = set()
-    existing_hashes: set[str] = set()
+    # 2. 查库过滤已存在的记录（no_autoflush 防止 pending 对象被提前 flush）
+    stock_codes = list({r["stock_code"] for r in deduped})
+    urls = [r["url"] for r in deduped if r.get("url")]
+    hashes = [r["content_hash"] for r in deduped if r.get("content_hash")]
 
-    if urls:
-        result = await session.execute(
-            select(NewsArticle.url).where(
-                NewsArticle.stock_code.in_(stock_codes),
-                NewsArticle.url.in_(urls),
+    existing_urls: set[tuple[str, str]] = set()
+    existing_hashes: set[tuple[str, str]] = set()
+
+    with session.no_autoflush:
+        if urls:
+            result = await session.execute(
+                select(NewsArticle.stock_code, NewsArticle.url).where(
+                    NewsArticle.stock_code.in_(stock_codes),
+                    NewsArticle.url.in_(urls),
+                )
             )
-        )
-        existing_urls = {row[0] for row in result.all()}
+            existing_urls = {(row[0], row[1]) for row in result.all()}
 
-    if hashes:
-        result = await session.execute(
-            select(NewsArticle.content_hash).where(
-                NewsArticle.stock_code.in_(stock_codes),
-                NewsArticle.content_hash.in_(hashes),
+        if hashes:
+            result = await session.execute(
+                select(NewsArticle.stock_code, NewsArticle.content_hash).where(
+                    NewsArticle.stock_code.in_(stock_codes),
+                    NewsArticle.content_hash.in_(hashes),
+                )
             )
-        )
-        existing_hashes = {row[0] for row in result.all()}
+            existing_hashes = {(row[0], row[1]) for row in result.all()}
 
     new_rows = [
-        r for r in rows
-        if r.get("url") not in existing_urls and r.get("content_hash") not in existing_hashes
+        r for r in deduped
+        if (r["stock_code"], r.get("url") or "") not in existing_urls
+        and (r["stock_code"], r.get("content_hash") or "") not in existing_hashes
     ]
     for r in new_rows:
         session.add(NewsArticle(**r))
