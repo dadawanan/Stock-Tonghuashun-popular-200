@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -40,6 +41,7 @@ def create_refresh_token(user_id: int, username: str) -> str:
         "type": "refresh",
         "exp": expire,
         "iat": datetime.now(timezone.utc),
+        "jti": uuid4().hex,
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=ALGORITHM)
 
