@@ -189,9 +189,42 @@ async def get_all_news(session: AsyncSession, *, limit_per_stock: int = 20) -> l
     return _rows_to_dicts(result.scalars().all())
 
 
-async def insert_news_batch(session: AsyncSession, rows: list[dict]) -> None:
-    for r in rows:
+async def insert_news_batch(session: AsyncSession, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+
+    stock_codes = list({r["stock_code"] for r in rows})
+    urls = [r["url"] for r in rows if r.get("url")]
+    hashes = [r["content_hash"] for r in rows if r.get("content_hash")]
+
+    existing_urls: set[str] = set()
+    existing_hashes: set[str] = set()
+
+    if urls:
+        result = await session.execute(
+            select(NewsArticle.url).where(
+                NewsArticle.stock_code.in_(stock_codes),
+                NewsArticle.url.in_(urls),
+            )
+        )
+        existing_urls = {row[0] for row in result.all()}
+
+    if hashes:
+        result = await session.execute(
+            select(NewsArticle.content_hash).where(
+                NewsArticle.stock_code.in_(stock_codes),
+                NewsArticle.content_hash.in_(hashes),
+            )
+        )
+        existing_hashes = {row[0] for row in result.all()}
+
+    new_rows = [
+        r for r in rows
+        if r.get("url") not in existing_urls and r.get("content_hash") not in existing_hashes
+    ]
+    for r in new_rows:
         session.add(NewsArticle(**r))
+    return len(new_rows)
 
 
 # ── MarketSnapshot ──

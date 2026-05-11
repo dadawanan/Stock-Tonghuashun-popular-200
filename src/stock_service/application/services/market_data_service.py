@@ -56,9 +56,9 @@ async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_i
         time.sleep(0.3)
     if not news_rows:
         return 0
-    await v2_crud.insert_news_batch(session, news_rows)
-    print(f"[news] 写入 {len(news_rows)} 条新闻记录")
-    return len(news_rows)
+    inserted = await v2_crud.insert_news_batch(session, news_rows)
+    print(f"[news] 写入 {inserted} 条新闻记录 (跳过 {len(news_rows) - inserted} 条重复)")
+    return inserted
 
 
 async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int) -> int:
