@@ -319,7 +319,7 @@ async def get_latest_analysis(session: AsyncSession, *, limit: int = 200) -> lis
     result = await session.execute(
         select(StockAnalysisSnapshot)
         .join(sub, (StockAnalysisSnapshot.stock_code == sub.c.stock_code) & (StockAnalysisSnapshot.analyzed_at == sub.c.max_at))
-        .order_by(StockAnalysisSnapshot.integrated_score.desc().nullslast())
+        .order_by(StockAnalysisSnapshot.analyzed_at.desc().nullslast())
         .limit(limit)
     )
     return _rows_to_dicts(result.scalars().all())
