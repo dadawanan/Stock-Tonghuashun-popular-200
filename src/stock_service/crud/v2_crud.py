@@ -338,9 +338,12 @@ async def get_analysis_by_stock(session: AsyncSession, stock_code: str) -> dict 
     return _rows_to_dicts([row])[0]
 
 
+_SNAPSHOT_COLS = {c.key for c in StockAnalysisSnapshot.__table__.columns}
+
+
 async def insert_stock_analysis_batch(session: AsyncSession, rows: list[dict]) -> int:
     for r in rows:
-        session.add(StockAnalysisSnapshot(**r))
+        session.add(StockAnalysisSnapshot(**{k: v for k, v in r.items() if k in _SNAPSHOT_COLS}))
     return len(rows)
 
 
