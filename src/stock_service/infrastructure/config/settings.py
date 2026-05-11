@@ -70,6 +70,9 @@ class Settings:
     db_connect_timeout = _get_int_env("DB_CONNECT_TIMEOUT", "90")
     ths_query = _get_required_env("THS_POPULARITY_QUERY", "人气排名前200")
     ths_cookie = os.getenv("THS_COOKIE", "").strip()
+    jwt_secret_key = _get_required_env("JWT_SECRET_KEY", "change-me-in-production")
+    jwt_access_expire_minutes = _get_int_env("JWT_ACCESS_EXPIRE_MINUTES", "30")
+    jwt_refresh_expire_days = _get_int_env("JWT_REFRESH_EXPIRE_DAYS", "7")
 
 
 settings = Settings()
