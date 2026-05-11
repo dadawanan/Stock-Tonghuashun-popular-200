@@ -127,6 +127,7 @@ async def run_popularity_pipeline(session: AsyncSession) -> dict[str, Any]:
     run_id = await v2_crud.create_pipeline_run(session, run_type="fetch", source="ths_pywencai", trade_date=trade_date, snapshot_time=now.to_pydatetime())
     stock_rows = build_stock_rows(stocks_df)
     stock_count = await v2_crud.upsert_stocks(session, stock_rows)
+    await session.flush()  # 确保 stock_master 记录先写入，避免外键冲突
     popularity_rows = build_popularity_rows(stocks_df, previous_rows, run_id=run_id, trade_date=trade_date, snapshot_time=now.to_pydatetime())
     await v2_crud.insert_popularity_batch(session, popularity_rows)
     comparison = compare_stock_sets(previous_rows, popularity_rows)
