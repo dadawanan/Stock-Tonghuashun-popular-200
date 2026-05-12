@@ -15,6 +15,29 @@ from stock_service.infrastructure.providers.eastmoney_provider import benchmark_
 _FETCH_SEM = asyncio.Semaphore(5)
 
 
+def _format_fetch_error(exc: BaseException, *, max_depth: int = 5) -> str:
+    """打印异常链，便于看到 raise ... from 里的根因（含 HTTP 状态与响应片段）。"""
+    parts: list[str] = [str(exc)]
+    cur: BaseException | None = exc
+    for _ in range(max_depth):
+        nxt = cur.__cause__ if cur is not None else None
+        if nxt is None:
+            break
+        chunk = f"{type(nxt).__name__}: {nxt}"
+        resp = getattr(nxt, "response", None)
+        if resp is not None:
+            try:
+                preview = (resp.text or "").replace("\r", " ").replace("\n", " ")
+                if len(preview) > 280:
+                    preview = preview[:277] + "..."
+                chunk += f" | status={resp.status_code} body_preview={preview!r}"
+            except Exception:
+                chunk += f" | status={getattr(resp, 'status_code', '?')}"
+        parts.append(f"<= {chunk}")
+        cur = nxt
+    return " || ".join(parts)
+
+
 def _to_optional_db_date(value: Any) -> date | None:
     if value is None:
         return None
@@ -87,11 +110,11 @@ async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_lates
                 try:
                     quote.update({k: v for k, v in fetch_quote(stock_code).items() if k in quote and v is not None})
                 except Exception as exc:
-                    print(f"[market] {stock_code} 实时行情接口失败: {exc}")
+                    print(f"[market] {stock_code} 实时行情接口失败: {_format_fetch_error(exc)}")
             try:
                 fund_flow = fetch_latest_fund_flow(stock_code)
             except Exception as exc:
-                print(f"[market] {stock_code} 资金流获取失败: {exc}")
+                print(f"[market] {stock_code} 资金流获取失败: {_format_fetch_error(exc)}")
                 fund_flow = {"flow_date": None, "main_net_inflow": 0.0, "main_net_inflow_ratio": 0.0}
             flow_date = _to_optional_db_date(fund_flow.get("flow_date"))
             benchmark_pct = None

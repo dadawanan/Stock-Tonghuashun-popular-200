@@ -4,7 +4,6 @@ import { useNavigate } from "umi";
 
 import {
   authApi,
-  getRefreshToken,
   setStoredUsername,
   setTokens,
 } from "../utils";
@@ -18,9 +17,18 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (getRefreshToken()) {
-      navigate("/", { replace: true });
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        await authApi.me();
+        if (!cancelled) navigate("/", { replace: true });
+      } catch {
+        /* 无会话或已失效，留在登录页 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   const onLogin = async (v: { username: string; password: string }) => {

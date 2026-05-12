@@ -3,9 +3,8 @@ import { message } from "antd";
 import {
   clearAuthStorage,
   getAccessToken,
-  getRefreshToken,
   setTokens,
-  type TokenPair,
+  type AuthTokensPublic,
 } from "./auth-storage";
 
 const BASE_URL = "";
@@ -45,30 +44,28 @@ function shouldTryRefresh(fullURL: string): boolean {
 }
 
 async function tryRefreshTokens(): Promise<boolean> {
-  const refresh = getRefreshToken();
-  if (!refresh) return false;
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
     try {
       const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refresh }),
       });
       const text = await res.text();
       if (!res.ok) {
         clearAuthStorage();
         return false;
       }
-      let body: ApiEnvelope<TokenPair>;
+      let body: ApiEnvelope<AuthTokensPublic>;
       try {
-        body = JSON.parse(text) as ApiEnvelope<TokenPair>;
+        body = JSON.parse(text) as ApiEnvelope<AuthTokensPublic>;
       } catch {
         clearAuthStorage();
         return false;
       }
-      if (body.code !== 0 || !body.data?.access_token || !body.data?.refresh_token) {
+      if (body.code !== 0 || !body.data?.access_token) {
         clearAuthStorage();
         return false;
       }
@@ -159,19 +156,16 @@ class HttpClient {
   ): Promise<T> {
     let response = await fetch(fullURL, {
       ...init,
+      credentials: "include",
       headers: this.mergeAuth(init.headers),
     });
 
-    if (
-      response.status === 401 &&
-      !retriedAfterRefresh &&
-      shouldTryRefresh(fullURL) &&
-      getRefreshToken()
-    ) {
+    if (response.status === 401 && !retriedAfterRefresh && shouldTryRefresh(fullURL)) {
       const ok = await tryRefreshTokens();
       if (ok) {
         response = await fetch(fullURL, {
           ...init,
+          credentials: "include",
           headers: this.mergeAuth(init.headers),
         });
       }
