@@ -1,4 +1,23 @@
 import http from './request';
+import type { TokenPair } from './auth-storage';
+
+export interface AuthUser {
+  id: number;
+  username: string;
+}
+
+export const authApi = {
+  login: (username: string, password: string) =>
+    http.post<TokenPair>('/api/auth/login', { username, password }),
+
+  register: (username: string, password: string) =>
+    http.post<AuthUser>('/api/auth/register', { username, password }),
+
+  logout: (refresh_token: string) =>
+    http.post<null>('/api/auth/logout', { refresh_token }),
+
+  me: () => http.get<AuthUser>('/api/auth/me'),
+};
 
 export interface PopularityStock {
   stock_code: string;
