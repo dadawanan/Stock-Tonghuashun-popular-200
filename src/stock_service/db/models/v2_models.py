@@ -250,6 +250,31 @@ class StockAnalysisSnapshot(Base):
     )
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    token_hash: Mapped[str] = mapped_column(VARCHAR(128), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        _Index("idx_refresh_tokens_user_id", "user_id"),
+        _Index("idx_refresh_tokens_expires_at", "expires_at"),
+    )
+
+
 __all__ = [
     "PipelineRun",
     "StockMaster",
@@ -258,4 +283,6 @@ __all__ = [
     "MarketSnapshot",
     "NewsAnalysis",
     "StockAnalysisSnapshot",
+    "User",
+    "RefreshToken",
 ]

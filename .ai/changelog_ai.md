@@ -89,3 +89,14 @@
 - 影响：所有 SQL 语法需检查兼容性，settings.py 连接配置已更新
 
 -->
+
+## 2026-05-11 用户认证模块
+
+**为什么：** 平台需要用户系统保护 API 接口，防止未授权访问。
+
+**做了什么：**
+- 新增 users + refresh_tokens 表
+- 实现注册、登录、token 刷新、登出接口
+- JWT access token (30min) + refresh token (7d) 轮换机制
+- 所有现有 API 加认证保护（health 除外）
+- passlib+bcrypt 密码哈希，refresh token 存 SHA256 哈希

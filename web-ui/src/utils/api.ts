@@ -1,4 +1,23 @@
 import http from './request';
+import type { AuthTokensPublic } from './auth-storage';
+
+export interface AuthUser {
+  id: number;
+  username: string;
+}
+
+export const authApi = {
+  login: (username: string, password: string) =>
+    http.post<AuthTokensPublic>('/api/auth/login', { username, password }),
+
+  register: (username: string, password: string) =>
+    http.post<AuthUser>('/api/auth/register', { username, password }),
+
+  logout: () => http.post<null>('/api/auth/logout'),
+
+  /** 静默请求：未登录或 token 失效时不弹全局错误（由路由/布局处理跳转） */
+  me: () => http.get<AuthUser>('/api/auth/me', { showError: false }),
+};
 
 export interface PopularityStock {
   stock_code: string;
@@ -26,6 +45,12 @@ export interface PopularityComparison {
 export interface AnalysisResult {
   stock_code: string;
   stock_name: string;
+  /** 最新人气榜快照中的名次（仅在同花顺人气 Top200 内时有值） */
+  popularity_rank?: number | null;
+  popularity_score?: number | null;
+  popularity_previous_rank?: number | null;
+  popularity_rank_change?: number | null;
+  popularity_snapshot_time?: string | null;
   event_types: string;
   text_event_label: string;
   text_score: number;

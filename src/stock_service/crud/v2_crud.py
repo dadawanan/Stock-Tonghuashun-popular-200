@@ -1,9 +1,11 @@
 from datetime import datetime
-from typing import Sequence
+from decimal import Decimal
+from typing import Any, Sequence
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from stock_service.domain.services.analysis_rules import normalize_stock_code
 from stock_service.db.models.v2_models import (
     MarketSnapshot,
     NewsAnalysis,
@@ -307,6 +309,57 @@ async def replace_news_analysis_batch(session: AsyncSession, run_id: int, rows: 
 # ── StockAnalysisSnapshot ──
 
 
+def _num_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value)  # type: ignore[arg-type]
+
+
+async def _attach_latest_popularity_fields(session: AsyncSession, rows: list[dict]) -> None:
+    """Augment analysis rows with fields from the latest popularity_snapshot (same snapshot_time as /api/popularity/latest)."""
+    if not rows:
+        return
+    max_time_result = await session.execute(select(func.max(PopularitySnapshot.snapshot_time)))
+    max_time: datetime | None = max_time_result.scalar_one_or_none()
+    if max_time is None:
+        empty = {
+            "popularity_rank": None,
+            "popularity_score": None,
+            "popularity_previous_rank": None,
+            "popularity_rank_change": None,
+            "popularity_snapshot_time": None,
+        }
+        for r in rows:
+            r.update(empty)
+        return
+
+    result = await session.execute(select(PopularitySnapshot).where(PopularitySnapshot.snapshot_time == max_time))
+    pop_by_norm: dict[str, dict[str, Any]] = {}
+    for p in _rows_to_dicts(result.scalars().all()):
+        pop_by_norm[normalize_stock_code(p["stock_code"])] = p
+
+    snap_iso = max_time.isoformat()
+    empty_missing = {
+        "popularity_rank": None,
+        "popularity_score": None,
+        "popularity_previous_rank": None,
+        "popularity_rank_change": None,
+        "popularity_snapshot_time": snap_iso,
+    }
+    for r in rows:
+        pop = pop_by_norm.get(normalize_stock_code(r["stock_code"]))
+        if pop is None:
+            r.update(empty_missing)
+            continue
+        r["popularity_rank"] = pop.get("popularity_rank")
+        r["popularity_score"] = _num_or_none(pop.get("popularity_score"))
+        r["popularity_previous_rank"] = pop.get("previous_rank")
+        r["popularity_rank_change"] = pop.get("rank_change")
+        r["popularity_snapshot_time"] = snap_iso
+
+
 async def get_latest_analysis(session: AsyncSession, *, limit: int = 200) -> list[dict]:
     sub = (
         select(
@@ -322,7 +375,9 @@ async def get_latest_analysis(session: AsyncSession, *, limit: int = 200) -> lis
         .order_by(StockAnalysisSnapshot.analyzed_at.desc().nullslast())
         .limit(limit)
     )
-    return _rows_to_dicts(result.scalars().all())
+    rows = _rows_to_dicts(result.scalars().all())
+    await _attach_latest_popularity_fields(session, rows)
+    return rows
 
 
 async def get_analysis_by_stock(session: AsyncSession, stock_code: str) -> dict | None:
@@ -335,7 +390,9 @@ async def get_analysis_by_stock(session: AsyncSession, stock_code: str) -> dict 
     row = result.scalars().first()
     if row is None:
         return None
-    return _rows_to_dicts([row])[0]
+    rows = _rows_to_dicts([row])
+    await _attach_latest_popularity_fields(session, rows)
+    return rows[0]
 
 
 _SNAPSHOT_COLS = {c.key for c in StockAnalysisSnapshot.__table__.columns}

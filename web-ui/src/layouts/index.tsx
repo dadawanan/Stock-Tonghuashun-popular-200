@@ -1,6 +1,9 @@
-import { Outlet, useLocation, useNavigate } from "umi";
-import { Layout, Menu } from "antd";
+import { Button, Layout, Menu, Spin } from "antd";
 import type { MenuProps } from "antd";
+import { useEffect, useState } from "react";
+import { Outlet, useLocation, useNavigate } from "umi";
+
+import { authApi, clearAuthStorage, setStoredUsername } from "../utils";
 import styles from "./index.less";
 
 const { Header, Content } = Layout;
@@ -21,6 +24,58 @@ export default function RootLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
+  const [ready, setReady] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authed, setAuthed] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const u = await authApi.me();
+        if (!cancelled) {
+          setAuthed(true);
+          setStoredUsername(u.username);
+          setUsername(u.username);
+        }
+      } catch {
+        clearAuthStorage();
+        if (!cancelled) navigate("/login", { replace: true });
+      } finally {
+        if (!cancelled) setCheckingAuth(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, navigate]);
+
+  const handleLogout = async () => {
+    setUsername(null);
+    try {
+      await authApi.logout();
+    } catch {
+      // 仍跳转登录页
+    } finally {
+      clearAuthStorage();
+      navigate("/login", { replace: true });
+    }
+  };
+
+  if (!ready || checkingAuth || !authed) {
+    return (
+      <div className={styles.authGate}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   const selectedKey = pathname.startsWith(navKeys.changelog)
     ? navKeys.changelog
     : pathname.startsWith(navKeys.simAccount)
@@ -38,6 +93,14 @@ export default function RootLayout() {
           onClick={({ key }) => navigate(String(key))}
           className={styles.menu}
         />
+        <div className={styles.headerRight}>
+          <span className={styles.username} title={username ?? undefined}>
+            {username ?? "…"}
+          </span>
+          <Button type="text" style={{ color: "rgba(255,255,255,0.88)" }} onClick={() => void handleLogout()}>
+            退出
+          </Button>
+        </div>
       </Header>
       <Content className={styles.content}>
         <Outlet />

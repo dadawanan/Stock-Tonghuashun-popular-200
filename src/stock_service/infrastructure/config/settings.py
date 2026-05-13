@@ -57,6 +57,18 @@ def _parse_db_ssl() -> bool | None:
     return False
 
 
+def _get_bool_env(name: str, default: str) -> bool:
+    raw = _get_required_env(name, default).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _get_samesite_env(name: str, default: str = "lax") -> str:
+    raw = _get_required_env(name, default).strip().lower()
+    if raw not in {"lax", "strict", "none"}:
+        raise RuntimeError(f"环境变量无效: {name}={raw!r}，可选值为 lax/strict/none")
+    return raw
+
+
 _load_dotenv()
 
 
@@ -70,6 +82,12 @@ class Settings:
     db_connect_timeout = _get_int_env("DB_CONNECT_TIMEOUT", "90")
     ths_query = _get_required_env("THS_POPULARITY_QUERY", "人气排名前200")
     ths_cookie = os.getenv("THS_COOKIE", "").strip()
+    jwt_secret_key = _get_required_env("JWT_SECRET_KEY", "change-me-in-production")
+    jwt_access_expire_minutes = _get_int_env("JWT_ACCESS_EXPIRE_MINUTES", "30")
+    jwt_refresh_expire_days = _get_int_env("JWT_REFRESH_EXPIRE_DAYS", "7")
+    jwt_refresh_cookie_name = _get_required_env("JWT_REFRESH_COOKIE_NAME", "stock_refresh_token")
+    cookie_secure = _get_bool_env("COOKIE_SECURE", "false")
+    cookie_samesite = _get_samesite_env("COOKIE_SAMESITE", "lax")
 
 
 settings = Settings()
