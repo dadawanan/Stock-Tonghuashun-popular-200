@@ -137,3 +137,164 @@ export const stockApi = {
 export const healthApi = {
   check: () => http.get<{ ready: boolean }>('/api/health'),
 };
+
+// ── Quant Module APIs ──
+
+export interface Strategy {
+  id: number;
+  name: string;
+  type: string;
+  params: Record<string, any>;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BacktestResult {
+  id: number;
+  strategy_id: number;
+  start_date: string;
+  end_date: string;
+  total_return: number | null;
+  annual_return: number | null;
+  max_drawdown: number | null;
+  sharpe_ratio: number | null;
+  win_rate: number | null;
+  total_trades: number | null;
+  created_at: string;
+}
+
+export interface BacktestTrade {
+  code: string;
+  side: string;
+  price: number | null;
+  quantity: number | null;
+  trade_date: string;
+  pnl: number | null;
+  signal_source: string | null;
+}
+
+export interface BacktestNav {
+  trade_date: string;
+  nav: number | null;
+  total_assets: number | null;
+  cash: number | null;
+  position_value: number | null;
+}
+
+export interface SimAccount {
+  id: number;
+  user_id: number;
+  account_name: string;
+  initial_capital: string;
+  current_capital: string;
+  total_assets: string;
+  status: string;
+  strategy_id: number | null;
+  config: Record<string, any> | null;
+  created_at: string;
+}
+
+export interface Position {
+  id: number;
+  account_id: number;
+  code: string;
+  quantity: number;
+  avg_price: string;
+  available_quantity: number | null;
+}
+
+export interface TradeOrder {
+  id: number;
+  code: string;
+  side: string;
+  price: string;
+  quantity: number;
+  status: string | null;
+  commission: string | null;
+  created_at: string;
+}
+
+export interface FeedbackInsight {
+  overall: {
+    win_rate: number | null;
+    sharpe: number | null;
+    max_drawdown: number | null;
+    annual_return: number | null;
+  };
+  by_signal: Record<string, {
+    wins: number;
+    losses: number;
+    total_pnl: number;
+    trades: number;
+    win_rate: number;
+  }>;
+  suggestions: string[];
+}
+
+export const quantApi = {
+  // Strategies
+  listStrategies: () => http.get<Strategy[]>('/api/quant/strategies/'),
+
+  getStrategy: (id: number) => http.get<Strategy>(`/api/quant/strategies/${id}`),
+
+  createStrategy: (data: { name: string; type: string; params?: Record<string, any>; description?: string }) =>
+    http.post<Strategy>('/api/quant/strategies/', data),
+
+  updateStrategy: (id: number, data: Partial<Strategy>) =>
+    http.put<Strategy>(`/api/quant/strategies/${id}`, data),
+
+  deleteStrategy: (id: number) => http.delete(`/api/quant/strategies/${id}`),
+
+  // Backtest
+  runBacktest: (data: {
+    strategy_id: number;
+    start_date: string;
+    end_date: string;
+    initial_capital?: number;
+    stock_codes?: string[];
+  }) => http.post<{ backtest_id: number; metrics: any; trade_count: number; nav_count: number }>(
+    '/api/quant/backtest/run', data
+  ),
+
+  listBacktestResults: (strategyId?: number) =>
+    http.get<BacktestResult[]>('/api/quant/backtest/results', {
+      params: strategyId ? { strategy_id: strategyId } : {},
+    }),
+
+  getBacktestResult: (id: number) => http.get<BacktestResult>(`/api/quant/backtest/results/${id}`),
+
+  getBacktestTrades: (id: number) => http.get<BacktestTrade[]>(`/api/quant/backtest/results/${id}/trades`),
+
+  getBacktestNav: (id: number) => http.get<BacktestNav[]>(`/api/quant/backtest/results/${id}/nav`),
+
+  // Sim Trading
+  listSimAccounts: () => http.get<SimAccount[]>('/api/quant/sim/accounts'),
+
+  createSimAccount: (data: { account_name: string; initial_capital?: number; strategy_id?: number }) =>
+    http.post<SimAccount>('/api/quant/sim/accounts', data),
+
+  getSimAccount: (id: number) => http.get<SimAccount>(`/api/quant/sim/accounts/${id}`),
+
+  getPositions: (accountId: number) =>
+    http.get<Position[]>(`/api/quant/sim/accounts/${accountId}/positions`),
+
+  getOrders: (accountId: number) =>
+    http.get<TradeOrder[]>(`/api/quant/sim/accounts/${accountId}/orders`),
+
+  executeTrade: (data: { account_id: number; code: string; side: 'buy' | 'sell'; quantity: number; price?: number }) =>
+    http.post<TradeOrder & { pnl?: number }>('/api/quant/sim/trade', data),
+
+  dailySettlement: (accountId: number, tradeDate: string) =>
+    http.post<{ stop_loss_triggered: string[] }>(
+      `/api/quant/sim/settlement?account_id=${accountId}&trade_date=${tradeDate}`
+    ),
+
+  // Feedback
+  getInsights: (backtestId: number) =>
+    http.get<FeedbackInsight>(`/api/quant/feedback/insights/${backtestId}`),
+
+  getSuggestions: (backtestId: number) =>
+    http.get<any>(`/api/quant/feedback/suggestions/${backtestId}`),
+};

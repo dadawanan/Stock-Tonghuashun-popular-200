@@ -7,6 +7,9 @@ export default defineConfig({
   routes: [
     { path: "/login", component: "login", layout: false },
     { path: "/", component: "index" },
+    { path: "/quant/strategies", component: "quant/strategies" },
+    { path: "/quant/backtest", component: "quant/backtest" },
+    { path: "/quant/sim", component: "quant/sim" },
     { path: "/sim-account", component: "sim-account" },
     { path: "/changelog", component: "changelog" },
     { path: "/docs", component: "docs" },

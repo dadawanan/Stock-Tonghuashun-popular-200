@@ -69,7 +69,8 @@
       "Bash(ALL_PROXY=\"\" http_proxy=\"\" https_proxy=\"\" curl --noproxy '*' -v --connect-timeout 10 \"https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1&secid=0.000725&beg=20260101&end=20260524\")",
       "Bash(cat)",
       "Bash(chmod +x /tmp/run_import.sh)",
-      "Bash(/tmp/run_import.sh -c ' *)"
+      "Bash(/tmp/run_import.sh -c ' *)",
+      "Bash(pnpm build *)"
     ]
   }
 }
