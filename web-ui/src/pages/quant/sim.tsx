@@ -216,11 +216,13 @@ export default function SimTradingPage() {
                 value={parseFloat(selectedAccount.total_assets) - parseFloat(selectedAccount.initial_capital)}
                 precision={2}
                 prefix="¥"
-                valueStyle={{
-                  color:
-                    parseFloat(selectedAccount.total_assets) >= parseFloat(selectedAccount.initial_capital)
-                      ? "#3f8600"
-                      : "#cf1322",
+                styles={{
+                  content: {
+                    color:
+                      parseFloat(selectedAccount.total_assets) >= parseFloat(selectedAccount.initial_capital)
+                        ? "#3f8600"
+                        : "#cf1322",
+                  },
                 }}
               />
             </Card>

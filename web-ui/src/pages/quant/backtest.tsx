@@ -118,7 +118,7 @@ export default function BacktestPage() {
       width: 100,
       render: (v: number | null) =>
         v != null ? (
-          <Text type={v >= 0 ? "success" : "danger"}>{(v * 100).toFixed(2)}%</Text>
+          <Text type={Number(v) >= 0 ? "success" : "danger"}>{(Number(v) * 100).toFixed(2)}%</Text>
         ) : (
           "-"
         ),
@@ -127,19 +127,19 @@ export default function BacktestPage() {
       title: "最大回撤",
       dataIndex: "max_drawdown",
       width: 100,
-      render: (v: number | null) => (v != null ? `${(v * 100).toFixed(2)}%` : "-"),
+      render: (v: string | number | null) => (v != null ? `${(Number(v) * 100).toFixed(2)}%` : "-"),
     },
     {
       title: "夏普比率",
       dataIndex: "sharpe_ratio",
       width: 100,
-      render: (v: number | null) => (v != null ? v.toFixed(2) : "-"),
+      render: (v: string | number | null) => (v != null ? Number(v).toFixed(2) : "-"),
     },
     {
       title: "胜率",
       dataIndex: "win_rate",
       width: 80,
-      render: (v: number | null) => (v != null ? `${(v * 100).toFixed(1)}%` : "-"),
+      render: (v: string | number | null) => (v != null ? `${(Number(v) * 100).toFixed(1)}%` : "-"),
     },
     { title: "交易次数", dataIndex: "total_trades", width: 90 },
     {
@@ -172,9 +172,9 @@ export default function BacktestPage() {
       title: "盈亏",
       dataIndex: "pnl",
       width: 100,
-      render: (v: number | null) =>
+      render: (v: string | number | null) =>
         v != null ? (
-          <Text type={v >= 0 ? "success" : "danger"}>{v.toFixed(2)}</Text>
+          <Text type={Number(v) >= 0 ? "success" : "danger"}>{Number(v).toFixed(2)}</Text>
         ) : (
           "-"
         ),
@@ -223,10 +223,10 @@ export default function BacktestPage() {
               <Card>
                 <Statistic
                   title="总收益"
-                  value={selectedResult.total_return != null ? selectedResult.total_return * 100 : 0}
+                  value={selectedResult.total_return != null ? Number(selectedResult.total_return) * 100 : 0}
                   precision={2}
                   suffix="%"
-                  valueStyle={{ color: (selectedResult.total_return || 0) >= 0 ? "#3f8600" : "#cf1322" }}
+                  styles={{ content: { color: (Number(selectedResult.total_return) || 0) >= 0 ? "#3f8600" : "#cf1322" } }}
                 />
               </Card>
             </Col>
@@ -234,10 +234,10 @@ export default function BacktestPage() {
               <Card>
                 <Statistic
                   title="年化收益"
-                  value={selectedResult.annual_return != null ? selectedResult.annual_return * 100 : 0}
+                  value={selectedResult.annual_return != null ? Number(selectedResult.annual_return) * 100 : 0}
                   precision={2}
                   suffix="%"
-                  valueStyle={{ color: (selectedResult.annual_return || 0) >= 0 ? "#3f8600" : "#cf1322" }}
+                  styles={{ content: { color: (Number(selectedResult.annual_return) || 0) >= 0 ? "#3f8600" : "#cf1322" } }}
                 />
               </Card>
             </Col>
@@ -245,16 +245,16 @@ export default function BacktestPage() {
               <Card>
                 <Statistic
                   title="最大回撤"
-                  value={selectedResult.max_drawdown != null ? selectedResult.max_drawdown * 100 : 0}
+                  value={selectedResult.max_drawdown != null ? Number(selectedResult.max_drawdown) * 100 : 0}
                   precision={2}
                   suffix="%"
-                  valueStyle={{ color: "#cf1322" }}
+                  styles={{ content: { color: "#cf1322" } }}
                 />
               </Card>
             </Col>
             <Col span={3}>
               <Card>
-                <Statistic title="夏普比率" value={selectedResult.sharpe_ratio || 0} precision={2} />
+                <Statistic title="夏普比率" value={Number(selectedResult.sharpe_ratio) || 0} precision={2} />
               </Card>
             </Col>
             <Col span={3}>
@@ -278,7 +278,7 @@ export default function BacktestPage() {
       {selectedResult && (
         <>
           <Card title={`交易明细 (回测 #${selectedResult.id})`} style={{ marginBottom: 16 }}>
-            <Table columns={tradeColumns} dataSource={trades} rowKey={(_, i) => i} size="small" pagination={{ pageSize: 20 }} />
+            <Table columns={tradeColumns} dataSource={trades} rowKey={(record) => `${record.code}-${record.trade_date}-${record.side}`} size="small" pagination={{ pageSize: 20 }} />
           </Card>
         </>
       )}

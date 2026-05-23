@@ -70,7 +70,8 @@
       "Bash(cat)",
       "Bash(chmod +x /tmp/run_import.sh)",
       "Bash(/tmp/run_import.sh -c ' *)",
-      "Bash(pnpm build *)"
+      "Bash(pnpm build *)",
+      "Bash(grep *)"
     ]
   }
 }
