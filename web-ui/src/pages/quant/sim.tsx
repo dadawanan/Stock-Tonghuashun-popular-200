@@ -306,9 +306,9 @@ export default function SimTradingPage() {
           <Form.Item name="quantity" label="数量" rules={[{ required: true }]}>
             <InputNumber min={100} step={100} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="price" label="价格" rules={[{ required: true }]}>
-            <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} />
-          </Form.Item>
+          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
+            * 价格为实时行情价，仅在交易时间（周一至周五 9:30-11:30, 13:00-15:00）可下单
+          </div>
         </Form>
       </Modal>
     </div>

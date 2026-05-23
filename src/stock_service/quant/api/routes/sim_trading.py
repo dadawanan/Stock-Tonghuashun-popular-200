@@ -89,13 +89,9 @@ async def execute_trade(
 
     try:
         if req.side == "buy":
-            result = await engine.buy(
-                req.account_id, req.code, req.quantity, req.price, req.price,
-            )
+            result = await engine.buy(req.account_id, req.code, req.quantity)
         else:
-            result = await engine.sell(
-                req.account_id, req.code, req.quantity, req.price, req.price,
-            )
+            result = await engine.sell(req.account_id, req.code, req.quantity)
         return ApiResponse(code=0, msg="ok", data=result)
     except ValueError as e:
         raise HTTPException(400, str(e))

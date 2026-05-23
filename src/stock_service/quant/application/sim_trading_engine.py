@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import date
 from decimal import Decimal
@@ -5,6 +6,8 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import quant_crud
+from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
+from stock_service.quant.domain.trading_calendar import is_trading_time
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +50,29 @@ class SimTradingEngine:
 
     async def buy(
         self, account_id: int, code: str, quantity: int,
-        price: float, current_price: float | None = None,
+        price: float | None = None, current_price: float | None = None,
     ) -> dict:
+        # Check trading time
+        trading, reason = is_trading_time()
+        if not trading:
+            raise ValueError(f"非交易时间，无法下单：{reason}")
+
         account = await quant_crud.get_sim_account(self._session, account_id)
         if not account:
             raise ValueError("Account not found")
         if account["status"] != "active":
             raise ValueError("Account is not active")
 
+        # Get real-time price from market
+        try:
+            quote = await asyncio.to_thread(fetch_quote, code)
+            exec_price = quote.get("latest_price")
+            if not exec_price:
+                raise ValueError(f"无法获取 {code} 的实时价格")
+        except Exception as e:
+            raise ValueError(f"获取实时价格失败：{e}")
+
         config = account.get("config") or {}
-        exec_price = current_price or price
         cost = self._calculate_buy_cost(
             exec_price, quantity,
             config.get("commission_rate", 0.0003),
@@ -99,7 +115,7 @@ class SimTradingEngine:
             "quantity": quantity,
             "status": "filled",
             "commission": Decimal(str(round(cost - exec_price * quantity, 4))),
-            "slippage": Decimal(str(round((exec_price - price) * quantity, 4))),
+            "slippage": Decimal("0"),
         })
 
         await self._update_total_assets(account_id)
@@ -107,8 +123,13 @@ class SimTradingEngine:
 
     async def sell(
         self, account_id: int, code: str, quantity: int,
-        price: float, current_price: float | None = None,
+        price: float | None = None, current_price: float | None = None,
     ) -> dict:
+        # Check trading time
+        trading, reason = is_trading_time()
+        if not trading:
+            raise ValueError(f"非交易时间，无法下单：{reason}")
+
         account = await quant_crud.get_sim_account(self._session, account_id)
         if not account:
             raise ValueError("Account not found")
@@ -121,8 +142,16 @@ class SimTradingEngine:
                 f"Insufficient available quantity: {position['available_quantity']} (T+1)"
             )
 
+        # Get real-time price from market
+        try:
+            quote = await asyncio.to_thread(fetch_quote, code)
+            exec_price = quote.get("latest_price")
+            if not exec_price:
+                raise ValueError(f"无法获取 {code} 的实时价格")
+        except Exception as e:
+            raise ValueError(f"获取实时价格失败：{e}")
+
         config = account.get("config") or {}
-        exec_price = current_price or price
         revenue = self._calculate_sell_revenue(
             exec_price, quantity,
             config.get("commission_rate", 0.0003),
