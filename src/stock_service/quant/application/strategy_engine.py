@@ -163,3 +163,160 @@ class SentimentStrategy(BaseStrategy):
                 ))
 
         return signals
+
+
+class TechnicalStrategy(BaseStrategy):
+    """Generate signals based on technical indicators."""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "ma_short": 5,
+            "ma_long": 20,
+            "rsi_overbought": 70,
+            "rsi_oversold": 30,
+        }
+
+    @property
+    def name(self) -> str:
+        return "技术面策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "technical"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            ind = context.indicators.get(code)
+            if not ind:
+                continue
+
+            ma_short = ind.get(f"ma{self._params['ma_short']}")
+            ma_long = ind.get(f"ma{self._params['ma_long']}")
+            rsi = ind.get("rsi")
+            macd = ind.get("macd")
+            macd_signal = ind.get("macd_signal")
+
+            reasons = []
+            score = 0.0
+
+            if ma_short and ma_long:
+                if ma_short > ma_long:
+                    score += 0.3
+                    reasons.append(f"MA{self._params['ma_short']}上穿MA{self._params['ma_long']}")
+                else:
+                    score -= 0.3
+                    reasons.append(f"MA{self._params['ma_short']}下穿MA{self._params['ma_long']}")
+
+            if rsi is not None:
+                if rsi <= self._params["rsi_oversold"]:
+                    score += 0.3
+                    reasons.append(f"RSI超卖({rsi:.1f})")
+                elif rsi >= self._params["rsi_overbought"]:
+                    score -= 0.3
+                    reasons.append(f"RSI超买({rsi:.1f})")
+
+            if macd is not None and macd_signal is not None:
+                if macd > macd_signal:
+                    score += 0.2
+                    reasons.append("MACD金叉")
+                else:
+                    score -= 0.2
+                    reasons.append("MACD死叉")
+
+            if score > 0.3:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score < -0.3:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals
+
+
+class MultiFactorStrategy(BaseStrategy):
+    """Combine multiple signal sources with configurable weights."""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "weights": {
+                "popularity": 0.25,
+                "sentiment": 0.35,
+                "technical": 0.40,
+            },
+            "buy_threshold": 0.6,
+            "sell_threshold": -0.4,
+        }
+        self._sub_strategies = {
+            "popularity": PopularityStrategy(),
+            "sentiment": SentimentStrategy(),
+            "technical": TechnicalStrategy(),
+        }
+
+    @property
+    def name(self) -> str:
+        return "多因子策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "multi_factor"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+        if "weights" in params:
+            self._params["weights"] = params["weights"]
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        sub_signals: dict[str, dict[str, float]] = {}
+        sub_reasons: dict[str, dict[str, str]] = {}
+
+        for factor_name, strategy in self._sub_strategies.items():
+            signals = await strategy.generate_signals(stock_codes, context)
+            for sig in signals:
+                if sig.code not in sub_signals:
+                    sub_signals[sig.code] = {}
+                    sub_reasons[sig.code] = {}
+                direction = 1.0 if sig.signal_type == SignalType.BUY else -1.0
+                sub_signals[sig.code][factor_name] = direction * sig.score
+                sub_reasons[sig.code][factor_name] = sig.reason
+
+        weights = self._params["weights"]
+        results = []
+        for code, factor_scores in sub_signals.items():
+            combined = sum(
+                factor_scores.get(factor, 0) * weight
+                for factor, weight in weights.items()
+            )
+            if combined >= self._params["buy_threshold"]:
+                reasons = [sub_reasons[code].get(f, "") for f in weights if f in sub_reasons.get(code, {})]
+                results.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, combined),
+                    reason=f"多因子综合分{combined:.2f}: " + "; ".join(filter(None, reasons)),
+                ))
+            elif combined <= self._params["sell_threshold"]:
+                reasons = [sub_reasons[code].get(f, "") for f in weights if f in sub_reasons.get(code, {})]
+                results.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(combined)),
+                    reason=f"多因子综合分{combined:.2f}: " + "; ".join(filter(None, reasons)),
+                ))
+
+        return results
