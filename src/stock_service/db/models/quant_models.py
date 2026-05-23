@@ -141,7 +141,7 @@ class PositionAccount(Base):
     code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
     quantity: Mapped[Optional[int]] = mapped_column(Integer)
     avg_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     available_quantity: Mapped[Optional[int]] = mapped_column(Integer)
 
     __table_args__ = (

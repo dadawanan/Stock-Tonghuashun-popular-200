@@ -15,9 +15,9 @@ router = APIRouter(prefix="/api/quant/sim", tags=["quant-sim"])
 @router.get("/accounts", response_model=ApiResponse)
 async def list_accounts(
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
-    accounts = await quant_crud.list_sim_accounts(session, current_user["id"])
+    accounts = await quant_crud.list_sim_accounts(session, current_user.id)
     return ApiResponse(code=0, msg="ok", data=accounts)
 
 
@@ -25,11 +25,11 @@ async def list_accounts(
 async def create_account(
     req: SimAccountCreate,
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     engine = SimTradingEngine(session)
     account = await engine.create_account(
-        user_id=current_user["id"],
+        user_id=current_user.id,
         account_name=req.account_name,
         initial_capital=req.initial_capital,
         strategy_id=req.strategy_id,
@@ -42,10 +42,10 @@ async def create_account(
 async def get_account(
     account_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     engine = SimTradingEngine(session)
-    if not await engine.verify_ownership(current_user["id"], account_id):
+    if not await engine.verify_ownership(current_user.id, account_id):
         raise HTTPException(403, "Not your account")
     account = await quant_crud.get_sim_account(session, account_id)
     return ApiResponse(code=0, msg="ok", data=account)
@@ -55,10 +55,10 @@ async def get_account(
 async def get_positions(
     account_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     engine = SimTradingEngine(session)
-    if not await engine.verify_ownership(current_user["id"], account_id):
+    if not await engine.verify_ownership(current_user.id, account_id):
         raise HTTPException(403, "Not your account")
     positions = await quant_crud.get_positions(session, account_id)
     return ApiResponse(code=0, msg="ok", data=positions)
@@ -68,10 +68,10 @@ async def get_positions(
 async def get_orders(
     account_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     engine = SimTradingEngine(session)
-    if not await engine.verify_ownership(current_user["id"], account_id):
+    if not await engine.verify_ownership(current_user.id, account_id):
         raise HTTPException(403, "Not your account")
     orders = await quant_crud.list_trade_orders(session, account_id)
     return ApiResponse(code=0, msg="ok", data=orders)
@@ -81,10 +81,10 @@ async def get_orders(
 async def execute_trade(
     req: TradeRequest,
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     engine = SimTradingEngine(session)
-    if not await engine.verify_ownership(current_user["id"], req.account_id):
+    if not await engine.verify_ownership(current_user.id, req.account_id):
         raise HTTPException(403, "Not your account")
 
     try:
@@ -106,10 +106,10 @@ async def daily_settlement(
     account_id: int,
     trade_date: str,
     session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     engine = SimTradingEngine(session)
-    if not await engine.verify_ownership(current_user["id"], account_id):
+    if not await engine.verify_ownership(current_user.id, account_id):
         raise HTTPException(403, "Not your account")
 
     dt = date_type.fromisoformat(trade_date)
