@@ -43,14 +43,14 @@ kill_port 8000
 kill_port 8001
 
 # 删掉正确名称的应用
-pm2 delete stock-api stock-web 2>/dev/null || true
+pm2 delete stock-api stock-web stock-scheduler 2>/dev/null || true
 # 若曾用 ecosystem.config.cjs 启动失败，PM2 会把配置文件当 Node 脚本跑，进程名显示 ecosystem.config，需反复删干净
 for _ in 1 2 3 4 5 6 7 8; do
   pm2 delete ecosystem.config 2>/dev/null || break
 done
 sleep 1
 
-echo "[start] PM2 启动 stock-api :8000 + stock-web :8001（使用 ecosystem.config.js）"
+echo "[start] PM2 启动 stock-api :8000 + stock-web :8001 + stock-scheduler（使用 ecosystem.config.js）"
 # 勿用 .cjs：若干 PM2 版本不识别为 ecosystem；勿加 -f，避免异常解析
 pm2 start "${SCRIPT_DIR}/ecosystem.config.js"
 
@@ -91,7 +91,9 @@ echo ""
 echo "  API:    http://127.0.0.1:8000  （Swagger /docs）"
 echo "  前端:   http://127.0.0.1:8001"
 echo ""
+echo "  定时任务: stock-scheduler（交易日 9:25 / 14:30 自动采集人气榜）"
+echo ""
 echo "  常用:   pm2 status | pm2 logs | pm2 logs stock-api"
-echo "  停止:   ./stop.sh   或   pm2 stop stock-api stock-web"
+echo "  停止:   ./stop.sh   或   pm2 stop stock-api stock-web stock-scheduler"
 echo "  改 .env 后:  pm2 restart stock-api --update-env"
 echo ""

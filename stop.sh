@@ -9,4 +9,5 @@ command -v pm2 >/dev/null || {
 
 pm2 stop stock-api 2>/dev/null || true
 pm2 stop stock-web 2>/dev/null || true
-echo "[stop] 已停止 stock-api、stock-web（仍在 pm2 列表中，需要可 pm2 delete）"
+pm2 stop stock-scheduler 2>/dev/null || true
+echo "[stop] 已停止 stock-api、stock-web、stock-scheduler（仍在 pm2 列表中，需要可 pm2 delete）"
