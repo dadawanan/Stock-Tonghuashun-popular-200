@@ -36,6 +36,7 @@ class RiskManager:
         total_assets: float,
         config: BacktestConfig,
     ) -> int:
+        price = float(price)
         if available_cash <= 0 or price <= 0:
             return 0
 

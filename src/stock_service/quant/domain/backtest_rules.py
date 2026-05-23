@@ -30,6 +30,7 @@ class BacktestRules:
     def calculate_buy_cost(
         self, price: float, quantity: int, config: BacktestConfig
     ) -> float:
+        price = float(price)
         actual_price = price * (1 + config.slippage)
         amount = actual_price * quantity
         commission = max(amount * config.commission_rate, 5)
@@ -38,6 +39,7 @@ class BacktestRules:
     def calculate_sell_revenue(
         self, price: float, quantity: int, config: BacktestConfig
     ) -> float:
+        price = float(price)
         actual_price = price * (1 - config.slippage)
         amount = actual_price * quantity
         commission = max(amount * config.commission_rate, 5)

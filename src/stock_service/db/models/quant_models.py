@@ -28,7 +28,7 @@ class StockBasic(Base):
     industry: Mapped[Optional[str]] = mapped_column(VARCHAR(64))
     list_date: Mapped[Optional[date]] = mapped_column(Date)
     status: Mapped[Optional[str]] = mapped_column(VARCHAR(16))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
@@ -48,7 +48,7 @@ class StockDaily(Base):
     close: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     volume: Mapped[Optional[int]] = mapped_column(BIGINT)
     amount: Mapped[Optional[int]] = mapped_column(BIGINT)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
@@ -67,7 +67,7 @@ class StockIndicator(Base):
     ma20: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     rsi: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     macd: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
@@ -85,7 +85,7 @@ class StrategyPick(Base):
     code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
     score: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     reason: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("idx_strategy_pick_strategy_date", "strategy_id", "trade_date"),
@@ -104,7 +104,7 @@ class BacktestResult(Base):
     max_drawdown: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     sharpe: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     win_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("idx_backtest_result_strategy", "strategy_id", "created_at"),
@@ -121,7 +121,7 @@ class TradeOrder(Base):
     price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     quantity: Mapped[Optional[int]] = mapped_column(Integer)
     status: Mapped[Optional[str]] = mapped_column(VARCHAR(16))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     strategy_id: Mapped[Optional[int]] = mapped_column(BIGINT)
     trade_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     commission: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), default=0)

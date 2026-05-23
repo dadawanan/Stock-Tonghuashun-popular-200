@@ -189,7 +189,10 @@ class BacktestEngine:
                 self._session, code, start_date=trade_date, end_date=trade_date
             )
             if daily:
-                market_data[code] = daily[0]
+                market_data[code] = {
+                    k: float(v) if isinstance(v, Decimal) else v
+                    for k, v in daily[0].items()
+                }
 
             ind = await quant_crud.get_stock_indicator(
                 self._session, code, trade_date=trade_date

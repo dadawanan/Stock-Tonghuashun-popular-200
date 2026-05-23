@@ -174,6 +174,8 @@ class TechnicalStrategy(BaseStrategy):
             "ma_long": 20,
             "rsi_overbought": 70,
             "rsi_oversold": 30,
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
         }
 
     @property
@@ -232,12 +234,15 @@ class TechnicalStrategy(BaseStrategy):
                     score -= 0.2
                     reasons.append("MACD死叉")
 
-            if score > 0.3:
+            buy_threshold = self._params.get("buy_threshold", 0.3)
+            sell_threshold = self._params.get("sell_threshold", -0.3)
+
+            if score > buy_threshold:
                 signals.append(Signal(
                     code=code, signal_type=SignalType.BUY,
                     score=min(1.0, score), reason="; ".join(reasons),
                 ))
-            elif score < -0.3:
+            elif score < sell_threshold:
                 signals.append(Signal(
                     code=code, signal_type=SignalType.SELL,
                     score=min(1.0, abs(score)), reason="; ".join(reasons),

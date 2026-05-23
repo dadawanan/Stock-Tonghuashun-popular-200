@@ -46,7 +46,30 @@
       "Bash(.venv/bin/python *)",
       "Bash(uv pip *)",
       "Bash(git log *)",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "Bash(git *)",
+      "Bash(python3 *)",
+      "Bash(PGPASSWORD=3C3TaF3t8HFtfTtPZBUK psql *)",
+      "Bash(bash *)",
+      "Bash(curl -s http://127.0.0.1:8000/api/auth/login -X POST -H \"Content-Type: application/json\" -d '{\"username\":\"fyq\",\"password\":\"123426\"}')",
+      "Bash(curl -s http://127.0.0.1:8000/api/auth/login -X POST -H \"Content-Type: application/json\" -d '{\"username\":\"dadawanan\",\"password\":\"dadawanan\"}')",
+      "Bash(curl -s http://127.0.0.1:8000/api/quant/strategies/ -X POST -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0NSIsInVzZXJuYW1lIjoiZGFkYXdhbmFuIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc3OTU1MzMzLCJpYXQiOjE3Nzk1NTIxMzJ9.Y3Tc7_DC89WvZEmlx-B2jVQfjxXipHWRx6qOoKtuVmo' -H 'Content-Type: application/json' -d '{\"name\":\"人气榜策略\",\"type\":\"popularity\",\"params\":{\"top_n\":50,\"new_entry_score_boost\":1.2,\"rank_drop_threshold\":-20},\"description\":\"基于同花顺人气榜排名变化的策略\"}')",
+      "Bash(pm2 logs *)",
+      "Bash(pm2 restart *)",
+      "Bash(unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY)",
+      "Bash(curl -s --noproxy '*' \"https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&ut=7eea3edcaed734bea9cbfc24409ed989&klt=101&fqt=1&secid=0.000725&beg=20260101&end=20260524\")",
+      "Bash(env)",
+      "Bash(curl -x http://127.0.0.1:7897 -s \"https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&ut=7eea3edcaed734bea9cbfc24409ed989&klt=101&fqt=1&secid=0.000725&beg=20260101&end=20260524\")",
+      "Bash(curl --noproxy '*' -s --connect-timeout 5 \"https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&ut=7eea3edcaed734bea9cbfc24409ed989&klt=101&fqt=1&secid=0.000725&beg=20260101&end=20260524\")",
+      "Bash(curl --noproxy '*' -s --connect-timeout 5 \"https://www.baidu.com\")",
+      "Bash(curl *)",
+      "Bash(http_proxy=\"\" https_proxy=\"\" HTTP_PROXY=\"\" HTTPS_PROXY=\"\" python3 /tmp/import_daily5.py)",
+      "Bash(networksetup -getwebproxy Wi-Fi)",
+      "Bash(networksetup -getsecurewebproxy Wi-Fi)",
+      "Bash(ALL_PROXY=\"\" http_proxy=\"\" https_proxy=\"\" curl --noproxy '*' -v --connect-timeout 10 \"https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1&secid=0.000725&beg=20260101&end=20260524\")",
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/run_import.sh)",
+      "Bash(/tmp/run_import.sh -c ' *)"
     ]
   }
 }

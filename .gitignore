@@ -12,3 +12,5 @@ wheels/
 # Local environment files
 .env
 .claude
+.traces
+.pytest_cache
