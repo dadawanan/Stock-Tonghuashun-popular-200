@@ -368,7 +368,21 @@ async def batch_insert_position_snapshots(session: AsyncSession, snapshots: list
     if not snapshots:
         return 0
     for snap in snapshots:
-        session.add(PositionDailySnapshot(**snap))
+        stmt = pg_insert(PositionDailySnapshot).values(**snap)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_position_snapshot",
+            set_={
+                "quantity": stmt.excluded.quantity,
+                "available_quantity": stmt.excluded.available_quantity,
+                "avg_price": stmt.excluded.avg_price,
+                "close_price": stmt.excluded.close_price,
+                "market_value": stmt.excluded.market_value,
+                "pnl": stmt.excluded.pnl,
+                "pnl_pct": stmt.excluded.pnl_pct,
+                "created_at": func.now(),
+            },
+        )
+        await session.execute(stmt)
     await session.flush()
     return len(snapshots)
 

@@ -71,7 +71,13 @@
       "Bash(chmod +x /tmp/run_import.sh)",
       "Bash(/tmp/run_import.sh -c ' *)",
       "Bash(pnpm build *)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(pm2 status *)",
+      "Bash(pm2 delete *)",
+      "Bash(PORT=8001 pm2 start \"pnpm dev\" --name stock-web)",
+      "Bash(pnpm dev *)",
+      "Bash(pkill -f \"umi dev\")",
+      "Bash(pm2 start *)"
     ]
   }
 }
