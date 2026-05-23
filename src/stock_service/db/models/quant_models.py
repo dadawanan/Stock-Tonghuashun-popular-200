@@ -9,6 +9,7 @@ from sqlalchemy import (
     Numeric,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy import Index as _Index
 from sqlalchemy.dialects.postgresql import BIGINT, JSONB, VARCHAR
@@ -158,8 +159,8 @@ class Strategy(Base):
     params: Mapped[Optional[dict]] = mapped_column(JSONB)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
 
 class BacktestTrade(Base):
@@ -174,7 +175,7 @@ class BacktestTrade(Base):
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
     pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     signal_source: Mapped[Optional[str]] = mapped_column(VARCHAR(32))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("idx_backtest_trade_backtest", "backtest_id", "trade_date"),
@@ -192,7 +193,7 @@ class BacktestDailyNav(Base):
     cash: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     position_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     benchmark_nav: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         UniqueConstraint("backtest_id", "trade_date", name="uq_backtest_daily_nav"),
@@ -211,8 +212,8 @@ class SimAccount(Base):
     status: Mapped[str] = mapped_column(VARCHAR(16), default="active")
     strategy_id: Mapped[Optional[int]] = mapped_column(BIGINT)
     config: Mapped[Optional[dict]] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         _Index("idx_sim_account_user", "user_id"),
@@ -233,7 +234,7 @@ class PositionDailySnapshot(Base):
     market_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     pnl_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
         UniqueConstraint("account_id", "code", "trade_date", name="uq_position_snapshot"),
@@ -251,7 +252,7 @@ class FeedbackLog(Base):
     after_params: Mapped[Optional[dict]] = mapped_column(JSONB)
     reason: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(VARCHAR(16), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
 
 __all__ = [
