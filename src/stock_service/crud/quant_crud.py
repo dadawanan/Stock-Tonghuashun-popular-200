@@ -1,7 +1,6 @@
 from datetime import date
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.db.models.quant_models import (
@@ -93,7 +92,7 @@ async def list_backtest_results(
     session: AsyncSession, strategy_id: int | None = None
 ) -> list[dict]:
     stmt = select(BacktestResult)
-    if strategy_id:
+    if strategy_id is not None:
         stmt = stmt.where(BacktestResult.strategy_id == strategy_id)
     result = await session.execute(stmt.order_by(BacktestResult.created_at.desc()))
     return _rows_to_dicts(result.scalars().all())
@@ -145,12 +144,16 @@ async def list_strategies(session: AsyncSession, *, active_only: bool = True) ->
     return _rows_to_dicts(result.scalars().all())
 
 
+_STRATEGY_ALLOWED = {"name", "type", "params", "description", "is_active"}
+
+
 async def update_strategy(session: AsyncSession, strategy_id: int, data: dict) -> dict | None:
     strategy = await session.get(Strategy, strategy_id)
     if not strategy:
         return None
     for key, value in data.items():
-        setattr(strategy, key, value)
+        if key in _STRATEGY_ALLOWED:
+            setattr(strategy, key, value)
     await session.flush()
     return _rows_to_dicts([strategy])[0]
 
@@ -251,12 +254,16 @@ async def list_sim_accounts(session: AsyncSession, user_id: int) -> list[dict]:
     return _rows_to_dicts(result.scalars().all())
 
 
+_SIM_ACCOUNT_ALLOWED = {"account_name", "current_capital", "total_assets", "status", "strategy_id", "config"}
+
+
 async def update_sim_account(session: AsyncSession, account_id: int, data: dict) -> dict | None:
     account = await session.get(SimAccount, account_id)
     if not account:
         return None
     for key, value in data.items():
-        setattr(account, key, value)
+        if key in _SIM_ACCOUNT_ALLOWED:
+            setattr(account, key, value)
     await session.flush()
     return _rows_to_dicts([account])[0]
 
