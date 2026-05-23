@@ -1,6 +1,7 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.db.models.quant_models import (
@@ -364,6 +365,95 @@ async def list_feedback_logs(
     return _rows_to_dicts(result.scalars().all())
 
 
+# ── StockDaily (batch upsert) ──
+
+
+async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    for row in rows:
+        stmt = pg_insert(StockDaily).values(**row)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_stock_daily_code_date",
+            set_={
+                "open": stmt.excluded.open,
+                "high": stmt.excluded.high,
+                "low": stmt.excluded.low,
+                "close": stmt.excluded.close,
+                "volume": stmt.excluded.volume,
+                "amount": stmt.excluded.amount,
+                "updated_at": func.now(),
+            },
+        )
+        await session.execute(stmt)
+    await session.flush()
+    return len(rows)
+
+
+# ── V2 CRUD extensions (for quant module) ──
+
+
+async def get_latest_popularity(
+    session: AsyncSession, limit: int = 200
+) -> list[dict]:
+    """Get latest popularity snapshots."""
+    from stock_service.db.models.v2_models import PopularitySnapshot, StockMaster
+
+    result = await session.execute(
+        select(PopularitySnapshot, StockMaster.stock_code)
+        .join(StockMaster, PopularitySnapshot.stock_code == StockMaster.stock_code)
+        .order_by(PopularitySnapshot.trade_date.desc(), PopularitySnapshot.popularity_rank)
+        .limit(limit)
+    )
+    rows = result.all()
+    return [
+        {
+            "stock_code": row.stock_code,
+            "popularity_rank": row[0].popularity_rank,
+            "popularity_score": row[0].popularity_score,
+            "is_new_entry": row[0].is_new_entry,
+            "rank_change": row[0].rank_change,
+        }
+        for row in rows
+    ]
+
+
+async def get_latest_popularity_by_code(
+    session: AsyncSession, code: str
+) -> dict | None:
+    from stock_service.db.models.v2_models import PopularitySnapshot, StockMaster
+
+    result = await session.execute(
+        select(PopularitySnapshot)
+        .join(StockMaster, PopularitySnapshot.stock_code == StockMaster.stock_code)
+        .where(StockMaster.stock_code == code)
+        .order_by(PopularitySnapshot.trade_date.desc())
+        .limit(1)
+    )
+    row = result.scalars().first()
+    if not row:
+        return None
+    return _rows_to_dicts([row])[0]
+
+
+async def get_latest_stock_analysis(
+    session: AsyncSession, code: str
+) -> dict | None:
+    from stock_service.db.models.v2_models import StockAnalysisSnapshot, StockMaster
+
+    result = await session.execute(
+        select(StockAnalysisSnapshot)
+        .join(StockMaster, StockAnalysisSnapshot.stock_code == StockMaster.stock_code)
+        .where(StockMaster.stock_code == code)
+        .order_by(StockAnalysisSnapshot.analyzed_at.desc())
+        .limit(1)
+    )
+    row = result.scalars().first()
+    if not row:
+        return None
+    return _rows_to_dicts([row])[0]
+
+
 __all__ = [
     "get_stock_basic_by_code",
     "list_stock_basic",
@@ -396,4 +486,8 @@ __all__ = [
     "batch_insert_position_snapshots",
     "create_feedback_log",
     "list_feedback_logs",
+    "batch_upsert_stock_daily",
+    "get_latest_popularity",
+    "get_latest_popularity_by_code",
+    "get_latest_stock_analysis",
 ]
