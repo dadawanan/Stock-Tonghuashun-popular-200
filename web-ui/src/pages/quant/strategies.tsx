@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import {
+  Alert,
   Button,
   Card,
-  Col,
+  Collapse,
   Form,
   Input,
   message,
   Modal,
-  Row,
-  Select,
   Space,
   Table,
   Tag,
@@ -17,7 +16,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { quantApi, Strategy } from "../../utils";
 
-const { Title } = Typography;
+const { Title, Paragraph, Text, Link } = Typography;
 
 const strategyTypeLabels: Record<string, { label: string; color: string }> = {
   popularity: { label: "人气榜策略", color: "blue" },
@@ -25,6 +24,59 @@ const strategyTypeLabels: Record<string, { label: string; color: string }> = {
   technical: { label: "技术面策略", color: "orange" },
   multi_factor: { label: "多因子策略", color: "purple" },
 };
+
+const strategyGuides = [
+  {
+    key: "popularity",
+    label: "人气榜策略 (popularity)",
+    description: "基于同花顺人气榜排名变化生成信号。当股票新进入榜单或排名大幅下降时产生买入信号，排名大幅上升时产生卖出信号。",
+    params: [
+      { name: "top_n", type: "number", default: "50", desc: "只关注人气榜前 N 名的股票" },
+      { name: "new_entry_score_boost", type: "number", default: "1.2", desc: "新进入榜单的股票信号强度加权倍数" },
+      { name: "rank_drop_threshold", type: "number", default: "-20", desc: "排名下降超过此值时触发买入信号（负数表示下降）" },
+    ],
+    example: '{"top_n": 50, "new_entry_score_boost": 1.2, "rank_drop_threshold": -20}',
+  },
+  {
+    key: "sentiment",
+    label: "情绪驱动策略 (sentiment)",
+    description: "基于新闻情绪分析和市场行为分析的综合得分生成信号。需要先运行分析流水线生成 text_score、market_score 等数据。",
+    params: [
+      { name: "text_weight", type: "number", default: "0.55", desc: "文本情绪分数权重（0-1）" },
+      { name: "market_weight", type: "number", default: "0.45", desc: "市场行为分数权重（0-1）" },
+      { name: "buy_threshold", type: "number", default: "2.0", desc: "综合得分超过此值时触发买入" },
+      { name: "sell_threshold", type: "number", default: "-1.5", desc: "综合得分低于此值时触发卖出" },
+    ],
+    example: '{"text_weight": 0.55, "market_weight": 0.45, "buy_threshold": 2.0, "sell_threshold": -1.5}',
+  },
+  {
+    key: "technical",
+    label: "技术面策略 (technical)",
+    description: "基于 MA、RSI、MACD 等技术指标生成信号。MA5 上穿 MA20 为买入信号，RSI 超卖/超买、MACD 金叉/死叉作为辅助确认。",
+    params: [
+      { name: "ma_short", type: "number", default: "5", desc: "短期均线周期" },
+      { name: "ma_long", type: "number", default: "20", desc: "长期均线周期" },
+      { name: "rsi_overbought", type: "number", default: "70", desc: "RSI 超买阈值（高于此值视为超买）" },
+      { name: "rsi_oversold", type: "number", default: "30", desc: "RSI 超卖阈值（低于此值视为超卖）" },
+      { name: "buy_threshold", type: "number", default: "0.3", desc: "买入信号阈值（综合得分超过此值触发）" },
+      { name: "sell_threshold", type: "number", default: "-0.3", desc: "卖出信号阈值（综合得分低于此值触发）" },
+    ],
+    example: '{"ma_short": 5, "ma_long": 20, "rsi_overbought": 70, "rsi_oversold": 30, "buy_threshold": 0.3, "sell_threshold": -0.3}',
+  },
+  {
+    key: "multi_factor",
+    label: "多因子策略 (multi_factor)",
+    description: "将人气榜、情绪驱动、技术面三种策略的信号按权重加权组合。综合多个信号源，降低单一信号的误判风险。",
+    params: [
+      { name: "weights.popularity", type: "number", default: "0.25", desc: "人气榜信号权重（0-1）" },
+      { name: "weights.sentiment", type: "number", default: "0.35", desc: "情绪驱动信号权重（0-1）" },
+      { name: "weights.technical", type: "number", default: "0.40", desc: "技术面信号权重（0-1）" },
+      { name: "buy_threshold", type: "number", default: "0.6", desc: "加权综合得分超过此值时触发买入" },
+      { name: "sell_threshold", type: "number", default: "-0.4", desc: "加权综合得分低于此值时触发卖出" },
+    ],
+    example: '{"weights": {"popularity": 0.25, "sentiment": 0.35, "technical": 0.40}, "buy_threshold": 0.6, "sell_threshold": -0.4}',
+  },
+];
 
 export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -107,6 +159,13 @@ export default function StrategiesPage() {
     }
   };
 
+  const handleFillExample = (type: string) => {
+    const guide = strategyGuides.find((g) => g.key === type);
+    if (guide) {
+      form.setFieldsValue({ params: guide.example });
+    }
+  };
+
   const columns: ColumnsType<Strategy> = [
     { title: "ID", dataIndex: "id", width: 60 },
     { title: "名称", dataIndex: "name", width: 150 },
@@ -156,6 +215,8 @@ export default function StrategiesPage() {
     },
   ];
 
+  const selectedType = Form.useWatch("type", form);
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
@@ -164,6 +225,66 @@ export default function StrategiesPage() {
           新建策略
         </Button>
       </div>
+
+      {/* 使用说明 */}
+      <Card title="使用说明" style={{ marginBottom: 16 }}>
+        <Paragraph>
+          策略是量化交易的核心，决定了何时买入、何时卖出。系统提供 4 种内置策略，每种策略有不同的参数可调。
+          你可以修改参数来调整策略的激进程度，也可以创建多个同类型策略来对比不同参数的效果。
+        </Paragraph>
+
+        <Paragraph>
+          <Text strong>使用流程：</Text>
+        </Paragraph>
+        <ol style={{ marginBottom: 16 }}>
+          <li>选择或创建一个策略</li>
+          <li>在「回测系统」中用历史数据验证策略效果</li>
+          <li>根据回测结果调整参数（闭环反馈会给出建议）</li>
+          <li>在「模拟盘」中用实时行情模拟交易</li>
+        </ol>
+
+        <Collapse
+          items={strategyGuides.map((guide) => ({
+            key: guide.key,
+            label: guide.label,
+            children: (
+              <>
+                <Paragraph>{guide.description}</Paragraph>
+                <Paragraph>
+                  <Text strong>参数说明：</Text>
+                </Paragraph>
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
+                      <th style={{ textAlign: "left", padding: "8px 12px" }}>参数名</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px" }}>类型</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px" }}>默认值</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px" }}>说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {guide.params.map((p) => (
+                      <tr key={p.name} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td style={{ padding: "8px 12px" }}><code>{p.name}</code></td>
+                        <td style={{ padding: "8px 12px" }}>{p.type}</td>
+                        <td style={{ padding: "8px 12px" }}><code>{p.default}</code></td>
+                        <td style={{ padding: "8px 12px" }}>{p.desc}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Paragraph>
+                  <Text type="secondary">示例参数：</Text>
+                  <br />
+                  <code style={{ background: "#f5f5f5", padding: "4px 8px", borderRadius: 4 }}>
+                    {guide.example}
+                  </code>
+                </Paragraph>
+              </>
+            ),
+          }))}
+        />
+      </Card>
 
       <Card>
         <Table
@@ -198,9 +319,33 @@ export default function StrategiesPage() {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="params" label="参数 (JSON)">
-            <Input.TextArea rows={6} placeholder='{"buy_threshold": 0.3, "sell_threshold": -0.3}' />
+          <Form.Item
+            name="params"
+            label={
+              <Space>
+                <span>参数 (JSON)</span>
+                {selectedType && (
+                  <Button size="small" type="link" onClick={() => handleFillExample(selectedType)}>
+                    填入示例
+                  </Button>
+                )}
+              </Space>
+            }
+          >
+            <Input.TextArea
+              rows={6}
+              placeholder='{"buy_threshold": 0.3, "sell_threshold": -0.3}'
+              style={{ fontFamily: "monospace" }}
+            />
           </Form.Item>
+          {selectedType && (
+            <Alert
+              type="info"
+              showIcon
+              message={`已选择「${strategyTypeLabels[selectedType]?.label || selectedType}」，点击上方「填入示例」可快速填入默认参数。`}
+              style={{ marginBottom: 16 }}
+            />
+          )}
         </Form>
       </Modal>
     </div>
