@@ -66,14 +66,33 @@ export default function BacktestPage() {
       const values = await form.validateFields();
       setRunning(true);
 
-      const result = await quantApi.runBacktest({
-        strategy_id: values.strategy_id,
-        start_date: values.dates[0].format("YYYY-MM-DD"),
-        end_date: values.dates[1].format("YYYY-MM-DD"),
-        initial_capital: values.initial_capital || 1000000,
-      });
+      const strategyIds: number[] = values.strategy_ids;
+      const startDate = values.dates[0].format("YYYY-MM-DD");
+      const endDate = values.dates[1].format("YYYY-MM-DD");
+      const initialCapital = values.initial_capital || 1000000;
 
-      message.success(`回测完成！共 ${result.trade_count} 笔交易`);
+      let successCount = 0;
+      let totalTrades = 0;
+
+      for (const strategyId of strategyIds) {
+        try {
+          const result = await quantApi.runBacktest({
+            strategy_id: strategyId,
+            start_date: startDate,
+            end_date: endDate,
+            initial_capital: initialCapital,
+          });
+          successCount++;
+          totalTrades += result.trade_count || 0;
+        } catch (e: any) {
+          const strategy = strategies.find((s) => s.id === strategyId);
+          message.error(`策略「${strategy?.name || strategyId}」回测失败: ${e?.message}`);
+        }
+      }
+
+      if (successCount > 0) {
+        message.success(`回测完成！${successCount} 个策略共 ${totalTrades} 笔交易`);
+      }
       loadResults();
     } catch (e: any) {
       message.error(e?.message || "回测失败");
@@ -96,9 +115,16 @@ export default function BacktestPage() {
     }
   };
 
+  const strategyMap = Object.fromEntries(strategies.map((s) => [s.id, s.name]));
+
   const resultColumns: ColumnsType<BacktestResult> = [
     { title: "ID", dataIndex: "id", width: 60 },
-    { title: "策略ID", dataIndex: "strategy_id", width: 80 },
+    {
+      title: "策略",
+      dataIndex: "strategy_id",
+      width: 120,
+      render: (id: number) => strategyMap[id] || `#${id}`,
+    },
     { title: "开始日期", dataIndex: "start_date", width: 110 },
     { title: "结束日期", dataIndex: "end_date", width: 110 },
     {
@@ -189,8 +215,8 @@ export default function BacktestPage() {
 
       <Card title="运行回测" style={{ marginBottom: 16 }}>
         <Form form={form} layout="inline" initialValues={{ initial_capital: 1000000 }}>
-          <Form.Item name="strategy_id" label="策略" rules={[{ required: true }]}>
-            <Select style={{ width: 180 }} placeholder="选择策略">
+          <Form.Item name="strategy_ids" label="策略" rules={[{ required: true, message: "请选择至少一个策略" }]}>
+            <Select mode="multiple" style={{ minWidth: 300 }} placeholder="选择策略（可多选）">
               {strategies.map((s) => (
                 <Select.Option key={s.id} value={s.id}>
                   {s.name}
