@@ -23,6 +23,7 @@ import {
   quantApi,
   SimAccount,
   Position,
+  Strategy,
   TradeOrder,
 } from "../../utils";
 
@@ -33,6 +34,7 @@ export default function SimTradingPage() {
   const [selectedAccount, setSelectedAccount] = useState<SimAccount | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [orders, setOrders] = useState<TradeOrder[]>([]);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
@@ -41,7 +43,15 @@ export default function SimTradingPage() {
 
   useEffect(() => {
     loadAccounts();
+    loadStrategies();
   }, []);
+
+  const loadStrategies = async () => {
+    try {
+      const data = await quantApi.listStrategies();
+      setStrategies(Array.isArray(data) ? data : []);
+    } catch {}
+  };
 
   const loadAccounts = async () => {
     setLoading(true);
@@ -78,6 +88,7 @@ export default function SimTradingPage() {
       await quantApi.createSimAccount({
         account_name: values.account_name,
         initial_capital: values.initial_capital || 1000000,
+        strategy_id: values.strategy_id,
       });
       message.success("账户创建成功");
       setCreateModalOpen(false);
@@ -238,6 +249,15 @@ export default function SimTradingPage() {
               columns={[
                 { title: "名称", dataIndex: "account_name" },
                 {
+                  title: "策略",
+                  dataIndex: "strategy_id",
+                  render: (id: number | null) => {
+                    if (!id) return <span style={{ color: "#999" }}>未绑定</span>;
+                    const s = strategies.find((s) => s.id === id);
+                    return s ? <Tag>{s.name}</Tag> : `#${id}`;
+                  },
+                },
+                {
                   title: "总资产",
                   dataIndex: "total_assets",
                   render: (v: string) => `¥${parseFloat(v).toFixed(2)}`,
@@ -284,6 +304,19 @@ export default function SimTradingPage() {
           <Form.Item name="initial_capital" label="初始资金" initialValue={1000000}>
             <InputNumber min={10000} step={100000} style={{ width: "100%" }} />
           </Form.Item>
+          <Form.Item name="strategy_id" label="绑定策略（可选）">
+            <Select
+              allowClear
+              placeholder="选择策略后可自动交易"
+              options={strategies.map((s) => ({
+                value: s.id,
+                label: `${s.name} (${s.type})`,
+              }))}
+            />
+          </Form.Item>
+          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
+            * 绑定策略后，定时任务会在交易时间自动执行该策略的买卖信号
+          </div>
         </Form>
       </Modal>
 
