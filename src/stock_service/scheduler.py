@@ -149,21 +149,45 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
 
                 # 执行交易
                 sim_engine = SimTradingEngine(session)
+                account_config = account.get("config") or {}
+                max_position_pct = account_config.get("max_position_pct", 0.2)
+
                 for signal in signals:
                     try:
                         if signal.signal_type.value == "buy":
+                            # 获取实时价格
+                            from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
+                            quote = await asyncio.to_thread(fetch_quote, signal.code)
+                            current_price = quote.get("latest_price")
+
+                            if not current_price or current_price <= 0:
+                                logger.warning(f"[auto-trade] 无法获取 {signal.code} 的价格")
+                                continue
+
+                            # 计算买入数量：使用账户总资产的 max_position_pct 比例
+                            total_assets = float(account.get("total_assets", 0))
+                            max_amount = total_assets * max_position_pct * signal.score
+                            quantity = int(max_amount / current_price / 100) * 100  # 向下取整到100股
+
+                            if quantity < 100:
+                                logger.info(
+                                    f"[auto-trade] {signal.code} 计算数量不足100股，跳过"
+                                )
+                                continue
+
                             result = await sim_engine.buy(
-                                account_id, signal.code, 100  # 默认买入100股
+                                account_id, signal.code, quantity
                             )
                             logger.info(
-                                f"[auto-trade] 买入 {signal.code} 100股 - {signal.reason}"
+                                f"[auto-trade] 买入 {signal.code} {quantity}股 "
+                                f"@ {current_price:.2f} - {signal.reason}"
                             )
                         elif signal.signal_type.value == "sell":
                             # 检查是否有持仓
                             position = await quant_crud.get_position(
                                 session, account_id, signal.code
                             )
-                            if position and position["available_quantity"] > 0:
+                            if position and position.get("available_quantity", 0) > 0:
                                 result = await sim_engine.sell(
                                     account_id, signal.code,
                                     position["available_quantity"]
