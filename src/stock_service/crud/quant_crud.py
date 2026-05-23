@@ -408,6 +408,67 @@ async def list_feedback_logs(
     return _rows_to_dicts(result.scalars().all())
 
 
+# ── Auto-trade helpers ──
+
+
+async def list_all_active_accounts_with_strategy(session: AsyncSession) -> list[dict]:
+    """获取所有配置了策略的活跃模拟账户"""
+    result = await session.execute(
+        select(
+            SimAccount,
+            Strategy.type.label("strategy_type"),
+            Strategy.params.label("strategy_params"),
+        )
+        .join(Strategy, SimAccount.strategy_id == Strategy.id)
+        .where(
+            SimAccount.status == "active",
+            Strategy.is_active == True,
+        )
+    )
+    rows = []
+    for account, strategy_type, strategy_params in result.all():
+        row = {c.name: getattr(account, c.name) for c in account.__table__.columns}
+        row["strategy_type"] = strategy_type
+        row["strategy_params"] = strategy_params
+        rows.append(row)
+    return rows
+
+
+async def get_latest_popularity_data(session: AsyncSession) -> dict[str, dict]:
+    """获取最新人气榜数据，返回 {stock_code: {...}} 格式"""
+    from stock_service.db.models.v2_models import PopularitySnapshot, StockMaster
+
+    # 获取最新的快照时间
+    sub = select(func.max(PopularitySnapshot.snapshot_time)).scalar_subquery()
+    result = await session.execute(
+        select(PopularitySnapshot, StockMaster.stock_code)
+        .join(StockMaster, PopularitySnapshot.stock_id == StockMaster.id)
+        .where(PopularitySnapshot.snapshot_time == sub)
+        .order_by(PopularitySnapshot.popularity_rank)
+    )
+
+    data = {}
+    for snap, stock_code in result.all():
+        data[stock_code] = {
+            "rank": snap.popularity_rank,
+            "score": float(snap.popularity_score) if snap.popularity_score else 0,
+            "is_new_entry": snap.is_new_entry if hasattr(snap, 'is_new_entry') else False,
+            "rank_change": snap.rank_change if hasattr(snap, 'rank_change') else 0,
+        }
+    return data
+
+
+async def list_feedback_logs(
+    session: AsyncSession, backtest_id: int
+) -> list[dict]:
+    result = await session.execute(
+        select(FeedbackLog)
+        .where(FeedbackLog.backtest_id == backtest_id)
+        .order_by(FeedbackLog.created_at.desc())
+    )
+    return _rows_to_dicts(result.scalars().all())
+
+
 # ── StockDaily (batch upsert) ──
 
 
