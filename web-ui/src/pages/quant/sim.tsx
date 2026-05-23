@@ -122,23 +122,25 @@ export default function SimTradingPage() {
   };
 
   const positionColumns: ColumnsType<Position> = [
-    { title: "股票代码", dataIndex: "code", width: 120 },
-    { title: "持仓数量", dataIndex: "quantity", width: 100 },
-    { title: "可用数量", dataIndex: "available_quantity", width: 100 },
+    { title: "股票代码", dataIndex: "code", width: 110 },
+    { title: "股票名称", dataIndex: "stock_name", width: 100 },
+    { title: "持仓数量", dataIndex: "quantity", width: 90 },
+    { title: "可用数量", dataIndex: "available_quantity", width: 90 },
     {
       title: "成本价",
       dataIndex: "avg_price",
-      width: 100,
+      width: 80,
       render: (v: string) => parseFloat(v).toFixed(2),
     },
   ];
 
   const orderColumns: ColumnsType<TradeOrder> = [
-    { title: "股票代码", dataIndex: "code", width: 120 },
+    { title: "股票代码", dataIndex: "code", width: 110 },
+    { title: "股票名称", dataIndex: "stock_name", width: 100 },
     {
       title: "方向",
       dataIndex: "side",
-      width: 80,
+      width: 70,
       render: (side: string) => (
         <Tag color={side === "buy" ? "green" : "red"}>
           {side === "buy" ? "买入" : "卖出"}
@@ -148,21 +150,20 @@ export default function SimTradingPage() {
     {
       title: "价格",
       dataIndex: "price",
-      width: 100,
+      width: 80,
       render: (v: string) => parseFloat(v).toFixed(2),
     },
-    { title: "数量", dataIndex: "quantity", width: 100 },
-    { title: "状态", dataIndex: "status", width: 80 },
+    { title: "数量", dataIndex: "quantity", width: 80 },
     {
       title: "手续费",
       dataIndex: "commission",
-      width: 100,
+      width: 80,
       render: (v: string | null) => (v ? parseFloat(v).toFixed(2) : "-"),
     },
     {
       title: "时间",
       dataIndex: "created_at",
-      width: 180,
+      width: 160,
       render: (v: string) => dayjs(v).format("YYYY-MM-DD HH:mm:ss"),
     },
   ];

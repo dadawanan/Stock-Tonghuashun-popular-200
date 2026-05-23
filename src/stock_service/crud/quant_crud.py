@@ -19,6 +19,7 @@ from stock_service.db.models.quant_models import (
     StrategyPick,
     TradeOrder,
 )
+from stock_service.db.models.v2_models import StockMaster
 
 
 def _rows_to_dicts(rows) -> list[dict]:
@@ -104,11 +105,20 @@ async def list_backtest_results(
 
 async def list_trade_orders(session: AsyncSession, account_id: int) -> list[dict]:
     result = await session.execute(
-        select(TradeOrder)
+        select(
+            TradeOrder,
+            StockMaster.stock_name,
+        )
+        .outerjoin(StockMaster, TradeOrder.code == StockMaster.stock_code)
         .where(TradeOrder.account_id == account_id)
         .order_by(TradeOrder.created_at.desc())
     )
-    return _rows_to_dicts(result.scalars().all())
+    rows = []
+    for order, stock_name in result.all():
+        row = {c.name: getattr(order, c.name) for c in order.__table__.columns}
+        row["stock_name"] = stock_name
+        rows.append(row)
+    return rows
 
 
 # ── PositionAccount ──
@@ -116,9 +126,19 @@ async def list_trade_orders(session: AsyncSession, account_id: int) -> list[dict
 
 async def get_positions(session: AsyncSession, account_id: int) -> list[dict]:
     result = await session.execute(
-        select(PositionAccount).where(PositionAccount.account_id == account_id)
+        select(
+            PositionAccount,
+            StockMaster.stock_name,
+        )
+        .outerjoin(StockMaster, PositionAccount.code == StockMaster.stock_code)
+        .where(PositionAccount.account_id == account_id)
     )
-    return _rows_to_dicts(result.scalars().all())
+    rows = []
+    for pos, stock_name in result.all():
+        row = {c.name: getattr(pos, c.name) for c in pos.__table__.columns}
+        row["stock_name"] = stock_name
+        rows.append(row)
+    return rows
 
 
 async def get_position(session: AsyncSession, account_id: int, code: str) -> dict | None:
@@ -263,11 +283,20 @@ async def get_backtest_trades(
     session: AsyncSession, backtest_id: int
 ) -> list[dict]:
     result = await session.execute(
-        select(BacktestTrade)
+        select(
+            BacktestTrade,
+            StockMaster.stock_name,
+        )
+        .outerjoin(StockMaster, BacktestTrade.code == StockMaster.stock_code)
         .where(BacktestTrade.backtest_id == backtest_id)
         .order_by(BacktestTrade.trade_date)
     )
-    return _rows_to_dicts(result.scalars().all())
+    rows = []
+    for trade, stock_name in result.all():
+        row = {c.name: getattr(trade, c.name) for c in trade.__table__.columns}
+        row["stock_name"] = stock_name
+        rows.append(row)
+    return rows
 
 
 # ── BacktestDailyNav ──

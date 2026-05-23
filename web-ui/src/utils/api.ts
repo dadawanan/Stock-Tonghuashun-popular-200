@@ -167,6 +167,7 @@ export interface BacktestResult {
 
 export interface BacktestTrade {
   code: string;
+  stock_name?: string | null;
   side: string;
   price: number | null;
   quantity: number | null;
@@ -200,6 +201,7 @@ export interface Position {
   id: number;
   account_id: number;
   code: string;
+  stock_name?: string | null;
   quantity: number;
   avg_price: string;
   available_quantity: number | null;
@@ -208,6 +210,7 @@ export interface Position {
 export interface TradeOrder {
   id: number;
   code: string;
+  stock_name?: string | null;
   side: string;
   price: string;
   quantity: number;

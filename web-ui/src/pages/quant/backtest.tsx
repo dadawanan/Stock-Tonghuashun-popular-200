@@ -155,6 +155,7 @@ export default function BacktestPage() {
 
   const tradeColumns: ColumnsType<BacktestTrade> = [
     { title: "股票代码", dataIndex: "code", width: 110 },
+    { title: "股票名称", dataIndex: "stock_name", width: 100 },
     {
       title: "方向",
       dataIndex: "side",
