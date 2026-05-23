@@ -120,6 +120,69 @@ async def get_positions(session: AsyncSession, account_id: int) -> list[dict]:
     return _rows_to_dicts(result.scalars().all())
 
 
+async def get_position(session: AsyncSession, account_id: int, code: str) -> dict | None:
+    result = await session.execute(
+        select(PositionAccount).where(
+            PositionAccount.account_id == account_id,
+            PositionAccount.code == code,
+        )
+    )
+    row = result.scalars().first()
+    return _rows_to_dicts([row])[0] if row else None
+
+
+async def create_position(session: AsyncSession, data: dict) -> dict:
+    position = PositionAccount(**data)
+    session.add(position)
+    await session.flush()
+    return _rows_to_dicts([position])[0]
+
+
+_POSITION_ALLOWED = {"quantity", "avg_price", "available_quantity"}
+
+
+async def update_position(session: AsyncSession, account_id: int, code: str, data: dict) -> dict | None:
+    result = await session.execute(
+        select(PositionAccount).where(
+            PositionAccount.account_id == account_id,
+            PositionAccount.code == code,
+        )
+    )
+    position = result.scalars().first()
+    if not position:
+        return None
+    for key, value in data.items():
+        if key in _POSITION_ALLOWED:
+            setattr(position, key, value)
+    await session.flush()
+    return _rows_to_dicts([position])[0]
+
+
+async def delete_position(session: AsyncSession, account_id: int, code: str) -> bool:
+    result = await session.execute(
+        select(PositionAccount).where(
+            PositionAccount.account_id == account_id,
+            PositionAccount.code == code,
+        )
+    )
+    position = result.scalars().first()
+    if not position:
+        return False
+    await session.delete(position)
+    await session.flush()
+    return True
+
+
+# ── TradeOrder (create) ──
+
+
+async def create_trade_order(session: AsyncSession, data: dict) -> dict:
+    order = TradeOrder(**data)
+    session.add(order)
+    await session.flush()
+    return _rows_to_dicts([order])[0]
+
+
 # ── Strategy ──
 
 
@@ -310,6 +373,11 @@ __all__ = [
     "list_backtest_results",
     "list_trade_orders",
     "get_positions",
+    "get_position",
+    "create_position",
+    "update_position",
+    "delete_position",
+    "create_trade_order",
     "create_strategy",
     "get_strategy",
     "list_strategies",
