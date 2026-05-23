@@ -151,4 +151,118 @@ CREATE INDEX IF NOT EXISTS idx_position_account_id ON position_account (account_
 
 COMMENT ON TABLE position_account IS '账户持仓快照（表名避开 PostgreSQL 保留字 position）';
 
+
+-- ------------------------------------------------------------
+-- G. 策略定义
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS strategy (
+    id          BIGSERIAL PRIMARY KEY,
+    name        VARCHAR(64) NOT NULL,
+    type        VARCHAR(32) NOT NULL,
+    params      JSONB,
+    description TEXT,
+    is_active   BOOLEAN DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE strategy IS '量化策略定义（popularity/sentiment/technical/multi_factor）';
+
+-- ------------------------------------------------------------
+-- H. 回测交易明细
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS backtest_trade (
+    id              BIGSERIAL PRIMARY KEY,
+    backtest_id     BIGINT NOT NULL REFERENCES backtest_result(id),
+    code            VARCHAR(16) NOT NULL,
+    side            VARCHAR(8) NOT NULL,
+    price           NUMERIC(18, 4),
+    quantity        INTEGER,
+    trade_date      DATE NOT NULL,
+    pnl             NUMERIC(18, 4),
+    signal_source   VARCHAR(32),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_backtest_trade_backtest ON backtest_trade (backtest_id, trade_date);
+
+-- ------------------------------------------------------------
+-- I. 回测每日净值
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS backtest_daily_nav (
+    id              BIGSERIAL PRIMARY KEY,
+    backtest_id     BIGINT NOT NULL REFERENCES backtest_result(id),
+    trade_date      DATE NOT NULL,
+    nav             NUMERIC(18, 6),
+    total_assets    NUMERIC(18, 2),
+    cash            NUMERIC(18, 2),
+    position_value  NUMERIC(18, 2),
+    benchmark_nav   NUMERIC(18, 6),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_backtest_daily_nav UNIQUE (backtest_id, trade_date)
+);
+
+-- ------------------------------------------------------------
+-- J. 模拟账户
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sim_account (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id),
+    account_name    VARCHAR(64) NOT NULL,
+    initial_capital NUMERIC(18, 2) NOT NULL DEFAULT 1000000.00,
+    current_capital NUMERIC(18, 2) NOT NULL,
+    total_assets    NUMERIC(18, 2) NOT NULL,
+    status          VARCHAR(16) DEFAULT 'active',
+    strategy_id     BIGINT REFERENCES strategy(id),
+    config          JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sim_account_user ON sim_account (user_id);
+
+-- ------------------------------------------------------------
+-- K. 持仓每日快照
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS position_daily_snapshot (
+    id                  BIGSERIAL PRIMARY KEY,
+    account_id          BIGINT NOT NULL,
+    code                VARCHAR(16) NOT NULL,
+    trade_date          DATE NOT NULL,
+    quantity            INTEGER,
+    available_quantity  INTEGER,
+    avg_price           NUMERIC(18, 4),
+    close_price         NUMERIC(18, 4),
+    market_value        NUMERIC(18, 2),
+    pnl                 NUMERIC(18, 2),
+    pnl_pct             NUMERIC(18, 4),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_position_snapshot UNIQUE (account_id, code, trade_date)
+);
+
+-- ------------------------------------------------------------
+-- L. 反馈日志
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS feedback_log (
+    id              BIGSERIAL PRIMARY KEY,
+    backtest_id     BIGINT NOT NULL REFERENCES backtest_result(id),
+    strategy_id     BIGINT NOT NULL REFERENCES strategy(id),
+    feedback_type   VARCHAR(32) NOT NULL,
+    before_params   JSONB,
+    after_params    JSONB,
+    reason          TEXT,
+    status          VARCHAR(16) DEFAULT 'pending',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ------------------------------------------------------------
+-- 扩展现有表
+-- ------------------------------------------------------------
+ALTER TABLE trade_order ADD COLUMN IF NOT EXISTS strategy_id BIGINT;
+ALTER TABLE trade_order ADD COLUMN IF NOT EXISTS trade_at TIMESTAMPTZ;
+ALTER TABLE trade_order ADD COLUMN IF NOT EXISTS commission NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE trade_order ADD COLUMN IF NOT EXISTS slippage NUMERIC(18, 4) DEFAULT 0;
+
+ALTER TABLE position_account ADD COLUMN IF NOT EXISTS available_quantity INTEGER;
+
 COMMIT;
