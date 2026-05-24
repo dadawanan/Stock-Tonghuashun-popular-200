@@ -1,218 +1,191 @@
-# 人气股综合分析流水线
+# A股量化交易平台
 
-这个项目现在包含三段能力：
+A股同花顺人气榜 Top 200 股票的数据采集、行情分析、量化交易平台。
 
-1. `stock_service.application.services.popularity_service`
-   用 `pywencai` 抓取同花顺人气前 200，并识别新进入榜单的股票。
-2. `stock_service.application.services.market_data_service`
-   为新增股票抓取真实新闻和行情数据并写入数据库。
-3. `stock_service.main`
-   执行“抓榜单 -> 比较新增 -> 抓新闻和行情 -> 分析新增股票”的主流程。
+## 功能概览
 
-## 一、当前整体流程
+### 数据采集
+- 同花顺人气榜 Top 200 自动采集（交易日 9:25 / 14:30）
+- 新闻/行情/资金流数据抓取
+- 日线数据自动更新（新浪数据源）
+- 技术指标自动计算（MA/RSI/MACD）
 
-你的目标可以拆成一条标准流水线：
+### 股票分析
+- 新闻情绪分析（6 种事件模式 + 正负面词统计）
+- 市场行为分析（量价信号 + 资金流信号）
+- 综合评分（文本分 × 0.55 + 市场分 × 0.45）
 
-1. 榜单层：每天抓取同花顺人气前 200，得到新增股票名单。
-2. 文本层：给新增股票收集新闻、公告、互动易、研报摘要、社媒热帖。
-3. 量化层：收集涨跌幅、量比、换手率、振幅、主力净流入、相对指数强弱。
-4. 决策层：把文本和资金行为合并成一条综合判断。
+### 量化交易
+- **10 种内置策略**：人气榜、情绪驱动、技术面、多因子、量价、动量、均值回归、资金流、突破、网格
+- **回测系统**：含交易成本、T+1、滑点、多策略对比、沪深300基准对比
+- **模拟盘**：市价单/限价单、止损止盈（固定+移动）、账户回撤限制、多策略共识
+- **参数优化**：网格搜索最优策略参数
+- **闭环反馈**：回测结果反向优化策略权重
 
-当前代码已经把第 1 步和第 4 步的骨架串起来了。
+### 定时任务
+| 时间 | 任务 |
+|------|------|
+| 9:25 | 采集人气榜 + 更新日线数据 + 分析 + 自动交易 |
+| 14:30 | 采集人气榜 + 更新日线数据 + 分析 + 自动交易 |
+| 15:05 | 每日结算（T+1更新、止损检查） |
+| 每60秒 | 检查挂单成交 |
 
-## 二、如何运行
+## 技术栈
 
-先安装为本地可编辑包：
+- **后端**：Python 3.12 + FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL
+- **前端**：UmiJS 4 + Ant Design 6 + TypeScript
+- **数据源**：同花顺(pywencai)、东方财富(akshare)、新浪财经
+- **部署**：PM2 / Docker
+
+## 快速开始
+
+### 环境要求
+- Python 3.12+
+- Node.js 18+
+- PostgreSQL 14+
+
+### 安装
 
 ```bash
-python3 -m pip install -e .
+# 克隆项目
+git clone <repo-url>
+cd stock
+
+# 后端依赖
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# 前端依赖
+cd web-ui
+pnpm install
+cd ..
 ```
 
-安装后，你现在有三种运行方式。
-
-### 方式 A：直接运行主流程
+### 配置
 
 ```bash
-python3 -m stock_service.main
+# 复制环境变量
+cp .env.example .env
+
+# 编辑 .env 填写数据库和 JWT 配置
 ```
 
-### 方式 B：只抓取，不做分析
-
-运行：
+### 数据库初始化
 
 ```bash
-python3 -m stock_service.main --fetch-only
+psql -U postgresql -d stock_db -f schema_v2.sql
+psql -U postgresql -d stock_db -f schema_quant_v1.sql
 ```
 
-### 方式 C：启动 API
+### 启动服务
 
 ```bash
-uvicorn stock_service.api.app:app --host 0.0.0.0 --port 8000
+# PM2 方式（开发模式，默认）
+./start.sh
+
+# PM2 方式（生产模式）
+WEB_MODE=prod ./start.sh
+
+# Docker 方式
+docker-compose up -d
 ```
 
-## 三、输入格式
+### 访问
 
-### 1. 新闻数据 `news_data.csv`
+- 前端：http://localhost:8001
+- API 文档：http://localhost:8000/docs
 
-建议列名如下：
+## 项目结构
 
-```csv
-stock_code,title,content,published_at,source,url
-688353.SH,公司公告中标某项目,公司披露获得储能项目订单...,2026-05-01 09:30:00,公告,https://example.com/a
-603693.SH,高管被立案调查,公司实际控制人收到立案通知...,2026-05-01 12:00:00,新闻,https://example.com/b
+```
+stock/
+├── src/stock_service/
+│   ├── api/                    # HTTP 层
+│   │   ├── app.py              # FastAPI 应用
+│   │   ├── dependencies.py     # 依赖注入
+│   │   └── routes/             # 路由模块
+│   ├── application/services/   # 应用服务层
+│   │   ├── popularity_service.py
+│   │   ├── market_data_service.py
+│   │   ├── analysis_service.py
+│   │   └── pipeline_service.py
+│   ├── domain/services/        # 领域服务层
+│   │   └── analysis_rules.py
+│   ├── quant/                  # 量化模块
+│   │   ├── domain/             # 策略接口、规则、风控
+│   │   ├── application/        # 策略引擎、回测、模拟盘
+│   │   ├── infrastructure/     # 数据源适配
+│   │   └── api/routes/         # 量化 API
+│   ├── infrastructure/         # 基础设施层
+│   │   ├── config/settings.py
+│   │   └── providers/          # 外部数据源
+│   └── crud/                   # 数据访问层
+├── web-ui/                     # 前端项目
+├── schema_v2.sql               # 主数据库 schema
+├── schema_quant_v1.sql         # 量化数据库 schema
+├── docker-compose.yml          # Docker 配置
+├── ecosystem.config.js         # PM2 配置
+└── start.sh / stop.sh          # 启停脚本
 ```
 
-当前版本会自动做这些事情：
+## API 接口
 
-- 事件识别与分类
-- 细粒度情绪强弱判断
-- 短期/长期标签
-- 事实支撑强弱判断
-- 多空逻辑提取
+### 分析模块
+- `POST /api/popularity/fetch` - 采集人气榜
+- `POST /api/analyze` - 运行分析
+- `GET /api/analysis` - 获取分析结果
 
-目前这部分先用规则引擎实现，后续可以直接替换成大模型接口。
+### 量化模块
+- `GET/POST /api/quant/strategies` - 策略管理
+- `POST /api/quant/backtest/run` - 运行回测
+- `GET /api/quant/backtest/results` - 回测结果
+- `GET/POST /api/quant/sim/accounts` - 模拟账户
+- `POST /api/quant/sim/trade` - 下单
+- `POST /api/quant/sim/settlement` - 每日结算
+- `POST /api/quant/optimizer/grid-search` - 参数优化
 
-### 2. 量化数据 `market_data.csv`
+## 策略说明
 
-建议列名如下：
+| 策略 | 类型 | 逻辑 |
+|------|------|------|
+| 人气榜策略 | popularity | 新进榜=买，排名大跌=买，大涨=卖 |
+| 情绪驱动策略 | sentiment | 新闻情绪+市场行为综合得分 |
+| 技术面策略 | technical | MA/RSI/MACD 组合 |
+| 多因子策略 | multi_factor | 以上三种加权组合 |
+| 量价策略 | volume_price | 放量上涨=买，放量下跌=卖 |
+| 动量策略 | momentum | 强势追涨，弱势杀跌 |
+| 均值回归策略 | mean_reversion | 偏离均线过多反向操作 |
+| 资金流策略 | fund_flow | 主力净流入=买，净流出=卖 |
+| 突破策略 | breakout | 突破布林上轨=买，跌破下轨=卖 |
+| 网格策略 | grid | 区间震荡网格交易 |
 
-```csv
-stock_code,pct_change,volume_ratio,turnover_rate,amplitude,main_net_inflow,relative_strength_vs_index
-688353.SH,5.3,2.1,18.4,9.7,8200000,2.3
-603693.SH,-4.1,1.8,23.6,11.2,-5600000,-1.4
+## Docker 部署
+
+```bash
+# 启动所有服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止
+docker-compose down
 ```
 
-字段解释：
+## 开发
 
-- `pct_change`: 当日涨跌幅
-- `volume_ratio`: 量比
-- `turnover_rate`: 换手率
-- `amplitude`: 振幅
-- `main_net_inflow`: 主力净流入金额，可正可负
-- `relative_strength_vs_index`: 相对大盘或板块的超额强度
+```bash
+# 运行测试
+python -m pytest tests/ -v
 
-## 四、当前真实取数实现说明
+# 运行后端
+uvicorn stock_service.api.app:app --reload
 
-### 1. `news_data.csv`
-
-这部分已经是自动抓取的真实数据，来源是东方财富个股新闻。
-
-### 2. `market_data.csv`
-
-这部分当前采用“稳定优先”的真实取数策略：
-
-- `latest_price` 和 `pct_change`：直接使用你的人气榜新增股票文件里的实时数据
-- `main_net_inflow` 和 `main_net_inflow_ratio`：通过东方财富资金流接口抓取真实数据
-- `turnover_rate`、`amplitude`、`volume_ratio`、`relative_strength_vs_index`：
-  这些字段对应的实时行情接口在你当前网络环境下不稳定，所以暂时可能为空
-
-这意味着当前版本的量化判断，最依赖的是：
-
-- 当日真实涨跌幅
-- 主力净流入/净流出
-- 文本事件分析
-
-如果后面你本机网络对东方财富实时 quote 接口更稳定，我可以继续把 `market_data.csv` 的这些扩展字段补全。
-
-## 五、当前输出内容
-
-`analysis_result.csv` 会输出这些关键字段：
-
-- `event_types`: 识别到的事件类型
-- `text_event_label`: 文本整体偏利好/利空/中性
-- `text_score`: 文本评分
-- `sentiment_strength`: 情绪强弱
-- `duration_tag`: 短期或长期
-- `fact_support`: 事实支撑强弱
-- `bullish_logic`: 看多逻辑
-- `bearish_logic`: 看空逻辑
-- `price_volume_signal`: 主动性上涨、被动性跟涨、高位巨量滞涨等
-- `fund_flow_signal`: 主力净流入或净流出
-- `behavior_label`: 做多主导、获利回吐、做空主导、空头回补
-- `integrated_score`: 综合评分
-- `decision`: 最终判断
-
-## 六、你要怎么把它升级成真正可用的策略
-
-### 1. 文本数据源扩展
-
-建议至少接这几类数据：
-
-- 公司公告
-- 财报和业绩预告
-- 新闻快讯
-- 互动易问答
-- 行业政策
-- 社媒高热帖子
-
-做法上不要把所有文本混在一起，建议保留 `source` 字段，后面可以给不同来源分配不同权重。
-
-### 2. 把规则引擎替换成大模型
-
-当前 `stock_analyzer.py` 里的 `analyze_text_event()` 是规则版占位实现。后面你可以把它替换成真正的 LLM 调用，返回结构化 JSON，比如：
-
-```json
-{
-  "event_type": "major_order",
-  "event_label": "利好",
-  "event_score": 2.1,
-  "sentiment_strength": "强",
-  "duration_tag": "长期",
-  "fact_support": "较强",
-  "bullish_logic": "订单落地验证需求",
-  "bearish_logic": "兑现周期长，短期利润释放有限"
-}
+# 运行前端
+cd web-ui && pnpm dev
 ```
 
-推荐做法：
+## License
 
-1. 一条新闻一次调用模型，输出结构化 JSON。
-2. 对同一只股票多条新闻做聚合。
-3. 将公告类文本权重调高，社媒类文本权重调低。
-
-### 3. 量化层更进一步
-
-你现在可以先用日频数据，后面升级为分钟级数据：
-
-- 开盘后 30 分钟资金净流入强度
-- 分时量价背离
-- 大单成交占比
-- 板块联动强度
-- 龙虎榜/席位特征
-
-这样才能更好区分：
-
-- 真正主动做多
-- 跟风拉升
-- 利好兑现出货
-- 恐慌杀跌后的空头回补
-
-### 4. 综合决策最好做成分层输出
-
-不要只给一个“买/不买”。建议拆成三层：
-
-- 事实层：发生了什么事件
-- 资金层：市场资金怎么反应
-- 结论层：是强化、分歧、兑现还是反转
-
-## 七、下一步最值得先做什么
-
-如果你想尽快落地，建议按这个顺序推进：
-
-1. 先固定 `news_data.csv` 和 `market_data.csv` 的字段标准。
-2. 先跑通规则版综合分析，验证整条链路和输出表格是否顺手。
-3. 再把 `analyze_text_event()` 替换成大模型接口。
-4. 最后再补分钟级资金行为和更复杂的评分体系。
-
-## 八、当前代码文件
-
-- [src/stock_service/main.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/main.py)
-- [src/stock_service/api/app.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/api/app.py)
-- [src/stock_service/application/services/popularity_service.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/application/services/popularity_service.py)
-- [src/stock_service/application/services/market_data_service.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/application/services/market_data_service.py)
-- [src/stock_service/application/services/analysis_service.py](/Users/fyq/Desktop/workshop/stock/src/stock_service/application/services/analysis_service.py)
-
-如果你下一步想要，我可以继续直接帮你做两件事中的一种：
-
-1. 接入真实大模型接口，把规则引擎改成模型分析。
-2. 继续增强 `market_data.csv`，把换手率、振幅、量比、相对强弱也补成稳定的真实数据。
+Private
