@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+*.egg-info
+dist
+build
+
+# Node
+node_modules
+web-ui/node_modules
+web-ui/dist
+web-ui/.umi
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+pm2*.log
+logs/
+
+# Docker
+Dockerfile*
+docker-compose.yml
+.dockerignore
+
+# Config
+.env
+.env.local

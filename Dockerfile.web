@@ -1,0 +1,30 @@
+# Frontend (build + serve)
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy dependency files
+COPY web-ui/package.json web-ui/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# Copy source and build
+COPY web-ui/ .
+RUN pnpm build
+
+# Production stage
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install serve globally
+RUN npm install -g serve
+
+# Copy built files
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 8001
+
+CMD ["serve", "dist", "-l", "tcp://0.0.0.0:8001", "--single"]
