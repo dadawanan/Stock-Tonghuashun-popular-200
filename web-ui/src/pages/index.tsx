@@ -197,6 +197,23 @@ export default function HomePage() {
       sorter: (a, b) => a.text_score - b.text_score,
     },
     {
+      title: "市场评分",
+      dataIndex: "market_score",
+      key: "market_score",
+      sorter: (a, b) => a.market_score - b.market_score,
+    },
+    {
+      title: "综合得分",
+      dataIndex: "integrated_score",
+      key: "integrated_score",
+      sorter: (a, b) => a.integrated_score - b.integrated_score,
+    },
+    {
+      title: "决策建议",
+      dataIndex: "decision",
+      key: "decision",
+    },
+    {
       title: "分析时间",
       dataIndex: "analyzed_at",
       key: "analyzed_at",
@@ -263,23 +280,6 @@ export default function HomePage() {
     //   title: "行为标签",
     //   dataIndex: "behavior_label",
     //   key: "behavior_label",
-    // },
-    {
-      title: "市场评分",
-      dataIndex: "market_score",
-      key: "market_score",
-      sorter: (a, b) => a.market_score - b.market_score,
-    },
-    {
-      title: "综合得分",
-      dataIndex: "integrated_score",
-      key: "integrated_score",
-      sorter: (a, b) => a.integrated_score - b.integrated_score,
-    },
-    // {
-    //   title: "决策建议",
-    //   dataIndex: "decision",
-    //   key: "decision",
     // },
   ];
 

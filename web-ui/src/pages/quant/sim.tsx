@@ -118,15 +118,28 @@ export default function SimTradingPage() {
       const values = await tradeForm.validateFields();
       if (!selectedAccount) return;
 
-      await quantApi.executeTrade({
-        account_id: selectedAccount.id,
-        code: values.code,
-        side: values.side,
-        quantity: values.quantity,
-        price: values.price,
-      });
+      if (values.order_type === "market") {
+        // 市价单 - 立即成交
+        await quantApi.executeTrade({
+          account_id: selectedAccount.id,
+          code: values.code,
+          side: values.side,
+          quantity: values.quantity,
+        });
+        message.success("交易成功");
+      } else {
+        // 限价单 - 挂单
+        await quantApi.createPendingOrder({
+          account_id: selectedAccount.id,
+          code: values.code,
+          side: values.side,
+          target_price: values.target_price,
+          quantity: values.quantity,
+          note: values.note,
+        });
+        message.success("挂单创建成功");
+      }
 
-      message.success("交易成功");
       setTradeModalOpen(false);
       tradeForm.resetFields();
       selectAccount(selectedAccount);
@@ -294,7 +307,16 @@ export default function SimTradingPage() {
           disabled={
             !record.available_quantity || record.available_quantity <= 0
           }
-          onClick={() => handleOpenSellModal(record)}
+          onClick={() => {
+            setSellPosition(record);
+            tradeForm.setFieldsValue({
+              code: record.code,
+              side: "sell",
+              order_type: "market",
+              quantity: record.available_quantity,
+            });
+            setTradeModalOpen(true);
+          }}
         >
           卖出
         </Button>
@@ -348,13 +370,6 @@ export default function SimTradingPage() {
         <Title level={3}>模拟盘</Title>
         <Space>
           <Button onClick={() => setCreateModalOpen(true)}>新建账户</Button>
-          <Button
-            type="primary"
-            onClick={() => setTradeModalOpen(true)}
-            disabled={!selectedAccount}
-          >
-            下单
-          </Button>
           <Button onClick={handleSettlement} disabled={!selectedAccount}>
             每日结算
           </Button>
@@ -499,9 +514,30 @@ export default function SimTradingPage() {
             size="small"
             style={{ marginBottom: 16 }}
             extra={
-              <Button size="small" onClick={() => setPendingOrderModalOpen(true)}>
-                挂单
-              </Button>
+              <Space>
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => {
+                    setSellPosition(null);
+                    tradeForm.setFieldsValue({ side: "buy", order_type: "market" });
+                    setTradeModalOpen(true);
+                  }}
+                >
+                  买入
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  onClick={() => {
+                    setSellPosition(null);
+                    tradeForm.setFieldsValue({ side: "sell", order_type: "market" });
+                    setTradeModalOpen(true);
+                  }}
+                >
+                  卖出
+                </Button>
+              </Space>
             }
           >
             <Table
@@ -626,12 +662,15 @@ export default function SimTradingPage() {
 
       {/* Trade Modal */}
       <Modal
-        title="下单"
+        title={tradeForm.getFieldValue("side") === "sell" ? "卖出" : "买入"}
         open={tradeModalOpen}
         onOk={handleTrade}
-        onCancel={() => setTradeModalOpen(false)}
+        onCancel={() => {
+          setTradeModalOpen(false);
+          setSellPosition(null);
+        }}
       >
-        <Form form={tradeForm} layout="vertical">
+        <Form form={tradeForm} layout="vertical" initialValues={{ order_type: "market", side: "buy" }}>
           <Form.Item name="code" label="股票代码" rules={[{ required: true }]}>
             <Input placeholder="000725.SZ" />
           </Form.Item>
@@ -643,107 +682,51 @@ export default function SimTradingPage() {
               ]}
             />
           </Form.Item>
-          <Form.Item name="quantity" label="数量" rules={[{ required: true }]}>
-            <InputNumber min={100} step={100} style={{ width: "100%" }} />
-          </Form.Item>
-          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
-            * 价格为实时行情价，仅在交易时间（周一至周五 9:30-11:30,
-            13:00-15:00）可下单
-          </div>
-        </Form>
-      </Modal>
-
-      {/* Sell Modal */}
-      <Modal
-        title="卖出持仓"
-        open={sellModalOpen}
-        onOk={handleSellFromPosition}
-        onCancel={() => setSellModalOpen(false)}
-      >
-        <Form form={sellForm} layout="vertical">
-          <Form.Item name="code" label="股票代码">
-            <Input disabled />
-          </Form.Item>
           {sellPosition && (
-            <div style={{ marginBottom: 16 }}>
-              <Text type="secondary">
-                {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 |
-                可卖 {sellPosition.available_quantity} 股
-              </Text>
+            <div style={{ marginBottom: 16, color: "#666" }}>
+              {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 |
+              可卖 {sellPosition.available_quantity} 股
             </div>
           )}
-          <Form.Item
-            name="quantity"
-            label="卖出数量"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="quantity" label="数量" rules={[{ required: true }]}>
             <InputNumber
               min={100}
-              max={sellPosition?.available_quantity || 0}
+              max={tradeForm.getFieldValue("side") === "sell" ? sellPosition?.available_quantity : undefined}
               step={100}
               style={{ width: "100%" }}
             />
           </Form.Item>
-          <Form.Item name="price" label="价格（留空使用实时价）">
-            <InputNumber
-              min={0.01}
-              step={0.01}
-              style={{ width: "100%" }}
-              placeholder="实时行情价"
-            />
-          </Form.Item>
-          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
-            * 交易时间内使用实时行情价，非交易时间可手动输入价格
-          </div>
-        </Form>
-      </Modal>
-
-      {/* Pending Order Modal */}
-      <Modal
-        title="创建挂单"
-        open={pendingOrderModalOpen}
-        onOk={handleCreatePendingOrder}
-        onCancel={() => setPendingOrderModalOpen(false)}
-      >
-        <Form form={pendingOrderForm} layout="vertical">
-          <Form.Item name="code" label="股票代码" rules={[{ required: true }]}>
-            <Input placeholder="000725.SZ" />
-          </Form.Item>
-          <Form.Item name="side" label="方向" rules={[{ required: true }]}>
+          <Form.Item name="order_type" label="订单类型" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: "buy", label: "买入" },
-                { value: "sell", label: "卖出" },
+                { value: "market", label: "立即成交（市价单）" },
+                { value: "limit", label: "挂单（限价单）" },
               ]}
             />
           </Form.Item>
-          <Form.Item
-            name="target_price"
-            label="目标价格"
-            rules={[{ required: true }]}
-          >
-            <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item
-            name="quantity"
-            label="数量"
-            rules={[{ required: true }]}
-          >
-            <InputNumber min={100} step={100} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="note" label="备注">
-            <Input placeholder="可选" />
-          </Form.Item>
+          {tradeForm.getFieldValue("order_type") === "limit" && (
+            <>
+              <Form.Item name="target_price" label="目标价格" rules={[{ required: true }]}>
+                <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item name="note" label="备注">
+                <Input placeholder="可选" />
+              </Form.Item>
+            </>
+          )}
           <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
-            <div>
-              <Text strong>买入单：</Text>当股价{" "}
-              <Text type="success">低于</Text> 目标价时自动成交
-            </div>
-            <div>
-              <Text strong>卖出单：</Text>当股价{" "}
-              <Text type="danger">高于</Text> 目标价时自动成交
-            </div>
-            <div>系统每分钟检查一次价格</div>
+            {tradeForm.getFieldValue("order_type") === "market" ? (
+              <>
+                <div>市价单：使用实时行情价立即成交</div>
+                <div>仅在交易时间（周一至周五 9:30-11:30, 13:00-15:00）可下单</div>
+              </>
+            ) : (
+              <>
+                <div>限价单：当价格达到目标时自动成交</div>
+                <div>买入：股价 ≤ 目标价时成交；卖出：股价 ≥ 目标价时成交</div>
+                <div>系统每分钟检查一次</div>
+              </>
+            )}
           </div>
         </Form>
       </Modal>
