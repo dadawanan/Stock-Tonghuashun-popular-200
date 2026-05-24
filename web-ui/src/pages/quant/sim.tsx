@@ -130,6 +130,16 @@ export default function SimTradingPage() {
     }
   };
 
+  const handleChangeStrategy = async (accountId: number, strategyId: number | null) => {
+    try {
+      await quantApi.updateSimAccount(accountId, { strategy_id: strategyId });
+      message.success("策略已更新");
+      loadAccounts();
+    } catch (e: any) {
+      message.error(e?.message || "更新失败");
+    }
+  };
+
   const handleTrade = async () => {
     try {
       const values = await tradeForm.validateFields();
@@ -529,13 +539,21 @@ export default function SimTradingPage() {
                 {
                   title: "策略",
                   dataIndex: "strategy_id",
-                  width: 100,
-                  render: (id: number | null) => {
-                    if (!id)
-                      return <span style={{ color: "#999" }}>未绑定</span>;
-                    const s = strategies.find((s) => s.id === id);
-                    return s ? <Tag>{s.name}</Tag> : `#${id}`;
-                  },
+                  width: 140,
+                  render: (id: number | null, record: SimAccount) => (
+                    <Select
+                      size="small"
+                      allowClear
+                      placeholder="未绑定"
+                      value={id || undefined}
+                      style={{ width: "100%" }}
+                      onChange={(value) => handleChangeStrategy(record.id, value || null)}
+                      options={strategies.map((s) => ({
+                        value: s.id,
+                        label: s.name,
+                      }))}
+                    />
+                  ),
                 },
                 {
                   title: "总资产",

@@ -66,6 +66,30 @@ async def delete_account(
     return ApiResponse(code=0, msg="ok")
 
 
+@router.put("/accounts/{account_id}", response_model=ApiResponse)
+async def update_account(
+    account_id: int,
+    data: dict,
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_user),
+):
+    """Update sim account (e.g., strategy_id)"""
+    engine = SimTradingEngine(session)
+    if not await engine.verify_ownership(current_user.id, account_id):
+        raise HTTPException(403, "Not your account")
+
+    # Only allow updating certain fields
+    allowed = {"strategy_id", "account_name"}
+    update_data = {k: v for k, v in data.items() if k in allowed}
+    if not update_data:
+        raise HTTPException(400, "No valid fields to update")
+
+    account = await quant_crud.update_sim_account(session, account_id, update_data)
+    if not account:
+        raise HTTPException(404, "Account not found")
+    return ApiResponse(code=0, msg="ok", data=account)
+
+
 @router.get("/accounts/{account_id}/positions", response_model=ApiResponse)
 async def get_positions(
     account_id: int,
