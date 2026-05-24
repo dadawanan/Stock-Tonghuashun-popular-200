@@ -267,6 +267,58 @@ async def get_backtest_result(session: AsyncSession, backtest_id: int) -> dict |
     return _rows_to_dicts([row])[0] if row else None
 
 
+async def delete_backtest_result(session: AsyncSession, backtest_id: int) -> bool:
+    """删除回测结果及其关联的交易明细和净值数据"""
+    result = await session.get(BacktestResult, backtest_id)
+    if not result:
+        return False
+
+    # 删除关联的交易明细
+    await session.execute(
+        select(BacktestTrade).where(BacktestTrade.backtest_id == backtest_id)
+    )
+    trades = await session.execute(
+        select(BacktestTrade).where(BacktestTrade.backtest_id == backtest_id)
+    )
+    for trade in trades.scalars().all():
+        await session.delete(trade)
+
+    # 删除关联的净值数据
+    navs = await session.execute(
+        select(BacktestDailyNav).where(BacktestDailyNav.backtest_id == backtest_id)
+    )
+    for nav in navs.scalars().all():
+        await session.delete(nav)
+
+    # 删除关联的反馈日志
+    logs = await session.execute(
+        select(FeedbackLog).where(FeedbackLog.backtest_id == backtest_id)
+    )
+    for log in logs.scalars().all():
+        await session.delete(log)
+
+    # 删除回测结果
+    await session.delete(result)
+    await session.flush()
+    return True
+
+
+async def batch_delete_backtest_results(
+    session: AsyncSession, backtest_ids: list[int]
+) -> int:
+    """批量删除回测结果"""
+    if not backtest_ids:
+        return 0
+
+    count = 0
+    for backtest_id in backtest_ids:
+        if await delete_backtest_result(session, backtest_id):
+            count += 1
+
+    await session.flush()
+    return count
+
+
 # ── BacktestTrade ──
 
 

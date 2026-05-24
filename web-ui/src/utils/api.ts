@@ -272,6 +272,11 @@ export const quantApi = {
 
   getBacktestNav: (id: number) => http.get<BacktestNav[]>(`/api/quant/backtest/results/${id}/nav`),
 
+  deleteBacktestResult: (id: number) => http.delete(`/api/quant/backtest/results/${id}`),
+
+  batchDeleteBacktestResults: (ids: number[]) =>
+    http.post<{ deleted: number }>('/api/quant/backtest/results/batch-delete', ids),
+
   // Sim Trading
   listSimAccounts: () => http.get<SimAccount[]>('/api/quant/sim/accounts'),
 

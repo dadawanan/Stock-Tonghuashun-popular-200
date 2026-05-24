@@ -7,6 +7,8 @@ import {
   Form,
   InputNumber,
   message,
+  Modal,
+  Popconfirm,
   Row,
   Select,
   Space,
@@ -15,6 +17,7 @@ import {
   Tag,
   Typography,
 } from "antd";
+import { ExclamationCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import {
@@ -35,6 +38,7 @@ export default function BacktestPage() {
   const [selectedResult, setSelectedResult] = useState<BacktestResult | null>(null);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
   const [navData, setNavData] = useState<BacktestNav[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -59,6 +63,54 @@ export default function BacktestPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await quantApi.deleteBacktestResult(id);
+      message.success("删除成功");
+      setSelectedRowKeys((prev) => prev.filter((k) => k !== id));
+      if (selectedResult?.id === id) {
+        setSelectedResult(null);
+        setTrades([]);
+        setNavData([]);
+      }
+      loadResults();
+    } catch {
+      message.error("删除失败");
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning("请先选择要删除的记录");
+      return;
+    }
+
+    Modal.confirm({
+      title: "确认批量删除",
+      icon: <ExclamationCircleOutlined />,
+      content: `确定要删除选中的 ${selectedRowKeys.length} 条回测记录吗？此操作不可恢复。`,
+      okText: "确认删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const ids = selectedRowKeys.map(Number);
+          const result = await quantApi.batchDeleteBacktestResults(ids);
+          message.success(`成功删除 ${result.deleted} 条记录`);
+          setSelectedRowKeys([]);
+          if (selectedResult && ids.includes(selectedResult.id)) {
+            setSelectedResult(null);
+            setTrades([]);
+            setNavData([]);
+          }
+          loadResults();
+        } catch {
+          message.error("批量删除失败");
+        }
+      },
+    });
   };
 
   const handleRun = async () => {
@@ -170,11 +222,24 @@ export default function BacktestPage() {
     { title: "交易次数", dataIndex: "total_trades", width: 90 },
     {
       title: "操作",
-      width: 80,
+      width: 130,
       render: (_, record) => (
-        <Button size="small" onClick={() => handleViewDetail(record)}>
-          详情
-        </Button>
+        <Space>
+          <Button size="small" onClick={() => handleViewDetail(record)}>
+            详情
+          </Button>
+          <Popconfirm
+            title="确定删除此回测记录？"
+            description="删除后不可恢复"
+            onConfirm={() => handleDelete(record.id)}
+            okText="删除"
+            cancelText="取消"
+          >
+            <Button size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -298,8 +363,29 @@ export default function BacktestPage() {
         )}
       </Row>
 
-      <Card title="回测记录" style={{ marginBottom: 16 }}>
-        <Table columns={resultColumns} dataSource={results} rowKey="id" loading={loading} size="small" pagination={false} />
+      <Card
+        title="回测记录"
+        style={{ marginBottom: 16 }}
+        extra={
+          selectedRowKeys.length > 0 && (
+            <Button danger onClick={handleBatchDelete}>
+              批量删除 ({selectedRowKeys.length})
+            </Button>
+          )
+        }
+      >
+        <Table
+          columns={resultColumns}
+          dataSource={results}
+          rowKey="id"
+          loading={loading}
+          size="small"
+          pagination={false}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
+        />
       </Card>
 
       {selectedResult && (

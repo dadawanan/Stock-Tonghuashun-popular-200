@@ -105,3 +105,27 @@ async def get_nav(
 ):
     nav = await quant_crud.get_backtest_nav(session, backtest_id)
     return ApiResponse(code=0, msg="ok", data=nav)
+
+
+@router.delete("/results/{backtest_id}", response_model=ApiResponse)
+async def delete_result(
+    backtest_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_user),
+):
+    ok = await quant_crud.delete_backtest_result(session, backtest_id)
+    if not ok:
+        raise HTTPException(404, "Backtest result not found")
+    return ApiResponse(code=0, msg="ok")
+
+
+@router.post("/results/batch-delete", response_model=ApiResponse)
+async def batch_delete_results(
+    ids: list[int],
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_user),
+):
+    if not ids:
+        raise HTTPException(400, "No IDs provided")
+    count = await quant_crud.batch_delete_backtest_results(session, ids)
+    return ApiResponse(code=0, msg="ok", data={"deleted": count})
