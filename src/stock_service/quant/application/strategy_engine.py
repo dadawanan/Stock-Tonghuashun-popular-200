@@ -325,3 +325,414 @@ class MultiFactorStrategy(BaseStrategy):
                 ))
 
         return results
+
+
+class VolumePriceStrategy(BaseStrategy):
+    """量价策略：基于成交量和价格的关系生成信号"""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "volume_ratio_threshold": 1.5,  # 放量倍数阈值
+            "price_change_threshold": 2.0,   # 涨跌幅阈值(%)
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
+        }
+
+    @property
+    def name(self) -> str:
+        return "量价策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "volume_price"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            market = context.market_data.get(code, {})
+            if not market:
+                continue
+
+            pct_change = market.get("pct_change", 0) or 0
+            volume_ratio = market.get("volume_ratio", 1) or 1
+
+            score = 0.0
+            reasons = []
+
+            # 放量上涨 = 买入信号
+            if volume_ratio >= self._params["volume_ratio_threshold"]:
+                if pct_change >= self._params["price_change_threshold"]:
+                    score += 0.5
+                    reasons.append(f"放量上涨(量比{volume_ratio:.1f}, 涨{pct_change:.1f}%)")
+                elif pct_change <= -self._params["price_change_threshold"]:
+                    score -= 0.5
+                    reasons.append(f"放量下跌(量比{volume_ratio:.1f}, 跌{pct_change:.1f}%)")
+            # 缩量横盘 = 观望
+            elif volume_ratio < 0.8 and abs(pct_change) < 1:
+                score = 0
+                reasons.append("缩量横盘，观望")
+
+            if score >= self._params["buy_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score <= self._params["sell_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals
+
+
+class MomentumStrategy(BaseStrategy):
+    """动量策略：基于价格动量生成信号"""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "lookback_days": 5,           # 回看天数
+            "momentum_threshold": 3.0,    # 动量阈值(%)
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
+        }
+
+    @property
+    def name(self) -> str:
+        return "动量策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "momentum"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            market = context.market_data.get(code, {})
+            if not market:
+                continue
+
+            pct_change = market.get("pct_change", 0) or 0
+
+            score = 0.0
+            reasons = []
+
+            # 强势动量 = 买入
+            if pct_change >= self._params["momentum_threshold"]:
+                score = min(1.0, pct_change / 10)
+                reasons.append(f"强势动量(涨幅{pct_change:.1f}%)")
+            # 弱势动量 = 卖出
+            elif pct_change <= -self._params["momentum_threshold"]:
+                score = -min(1.0, abs(pct_change) / 10)
+                reasons.append(f"弱势动量(跌幅{pct_change:.1f}%)")
+
+            if score >= self._params["buy_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score <= self._params["sell_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals
+
+
+class MeanReversionStrategy(BaseStrategy):
+    """均值回归策略：价格偏离均线过多时反向操作"""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "deviation_threshold": 5.0,  # 偏离均线阈值(%)
+            "ma_period": 20,             # 均线周期
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
+        }
+
+    @property
+    def name(self) -> str:
+        return "均值回归策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "mean_reversion"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            market = context.market_data.get(code, {})
+            ind = context.indicators.get(code, {})
+            if not market or not ind:
+                continue
+
+            close = market.get("close", 0) or 0
+            ma = ind.get(f"ma{self._params['ma_period']}", 0) or 0
+
+            if not close or not ma or ma == 0:
+                continue
+
+            deviation = (close - ma) / ma * 100
+
+            score = 0.0
+            reasons = []
+
+            # 价格远低于均线 = 超卖买入
+            if deviation <= -self._params["deviation_threshold"]:
+                score = min(1.0, abs(deviation) / 20)
+                reasons.append(f"价格低于MA{self._params['ma_period']} {abs(deviation):.1f}%，超卖")
+            # 价格远高于均线 = 超买卖出
+            elif deviation >= self._params["deviation_threshold"]:
+                score = -min(1.0, deviation / 20)
+                reasons.append(f"价格高于MA{self._params['ma_period']} {deviation:.1f}%，超买")
+
+            if score >= self._params["buy_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score <= self._params["sell_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals
+
+
+class FundFlowStrategy(BaseStrategy):
+    """资金流策略：基于主力资金净流入生成信号"""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "inflow_threshold": 1000000,   # 净流入阈值(元)
+            "outflow_threshold": -1000000, # 净流出阈值(元)
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
+        }
+
+    @property
+    def name(self) -> str:
+        return "资金流策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "fund_flow"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            market = context.market_data.get(code, {})
+            if not market:
+                continue
+
+            main_net_inflow = market.get("main_net_inflow", 0) or 0
+
+            score = 0.0
+            reasons = []
+
+            if main_net_inflow >= self._params["inflow_threshold"]:
+                score = min(1.0, main_net_inflow / 10000000)
+                reasons.append(f"主力净流入{main_net_inflow/10000:.0f}万")
+            elif main_net_inflow <= self._params["outflow_threshold"]:
+                score = -min(1.0, abs(main_net_inflow) / 10000000)
+                reasons.append(f"主力净流出{abs(main_net_inflow)/10000:.0f}万")
+
+            if score >= self._params["buy_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score <= self._params["sell_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals
+
+
+class BreakoutStrategy(BaseStrategy):
+    """突破策略：价格突破N日高点买入，跌破N日低点卖出"""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "lookback_days": 20,       # 回看天数
+            "breakout_pct": 1.0,       # 突破幅度(%)
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
+        }
+
+    @property
+    def name(self) -> str:
+        return "突破策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "breakout"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            market = context.market_data.get(code, {})
+            ind = context.indicators.get(code, {})
+            if not market or not ind:
+                continue
+
+            close = market.get("close", 0) or 0
+            high = market.get("high", 0) or 0
+            low = market.get("low", 0) or 0
+
+            # 使用 BOLL 指标的上下轨作为支撑/阻力
+            boll_upper = ind.get("boll_upper", 0) or 0
+            boll_lower = ind.get("boll_lower", 0) or 0
+
+            if not close or not boll_upper or not boll_lower:
+                continue
+
+            score = 0.0
+            reasons = []
+
+            # 突破上轨 = 强势突破
+            if close > boll_upper:
+                score = min(1.0, (close - boll_upper) / boll_upper * 10)
+                reasons.append(f"突破布林上轨({boll_upper:.2f})")
+            # 跌破下轨 = 弱势跌破
+            elif close < boll_lower:
+                score = -min(1.0, (boll_lower - close) / boll_lower * 10)
+                reasons.append(f"跌破布林下轨({boll_lower:.2f})")
+
+            if score >= self._params["buy_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score <= self._params["sell_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals
+
+
+class GridStrategy(BaseStrategy):
+    """网格策略：在设定价格区间内，每跌一格买，每涨一格卖"""
+
+    def __init__(self, params: dict | None = None):
+        self._params = params or {
+            "grid_pct": 3.0,          # 网格大小(%)
+            "upper_limit": 20.0,      # 上限偏离(%)
+            "lower_limit": -20.0,     # 下限偏离(%)
+            "buy_threshold": 0.3,
+            "sell_threshold": -0.3,
+        }
+
+    @property
+    def name(self) -> str:
+        return "网格策略"
+
+    @property
+    def strategy_type(self) -> str:
+        return "grid"
+
+    def get_params(self) -> dict:
+        return self._params.copy()
+
+    def set_params(self, params: dict) -> None:
+        self._params.update(params)
+
+    async def generate_signals(
+        self, stock_codes: list[str], context: StrategyContext
+    ) -> list[Signal]:
+        signals = []
+        for code in stock_codes:
+            market = context.market_data.get(code, {})
+            ind = context.indicators.get(code, {})
+            if not market or not ind:
+                continue
+
+            close = market.get("close", 0) or 0
+            ma20 = ind.get("ma20", 0) or 0
+
+            if not close or not ma20 or ma20 == 0:
+                continue
+
+            # 计算相对于均线的偏离度
+            deviation = (close - ma20) / ma20 * 100
+            grid_pct = self._params["grid_pct"]
+
+            score = 0.0
+            reasons = []
+
+            # 偏离度在某个网格位置
+            grid_position = deviation / grid_pct
+
+            # 在下方网格区域 = 买入
+            if deviation <= self._params["lower_limit"]:
+                score = min(1.0, abs(deviation) / 30)
+                reasons.append(f"网格底部区域(偏离{deviation:.1f}%)")
+            elif deviation < 0 and abs(deviation) >= grid_pct:
+                score = min(0.7, abs(deviation) / 30)
+                reasons.append(f"网格下方区域(偏离{deviation:.1f}%)")
+            # 在上方网格区域 = 卖出
+            elif deviation >= self._params["upper_limit"]:
+                score = -min(1.0, deviation / 30)
+                reasons.append(f"网格顶部区域(偏离{deviation:.1f}%)")
+            elif deviation > 0 and deviation >= grid_pct:
+                score = -min(0.7, deviation / 30)
+                reasons.append(f"网格上方区域(偏离{deviation:.1f}%)")
+
+            if score >= self._params["buy_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.BUY,
+                    score=min(1.0, score), reason="; ".join(reasons),
+                ))
+            elif score <= self._params["sell_threshold"]:
+                signals.append(Signal(
+                    code=code, signal_type=SignalType.SELL,
+                    score=min(1.0, abs(score)), reason="; ".join(reasons),
+                ))
+
+        return signals

@@ -5,11 +5,17 @@ from stock_service.api.dependencies import get_current_user, get_session
 from stock_service.crud import quant_crud
 from stock_service.quant.application.backtest_engine import BacktestEngine
 from stock_service.quant.application.strategy_engine import (
+    BreakoutStrategy,
+    FundFlowStrategy,
+    GridStrategy,
+    MeanReversionStrategy,
+    MomentumStrategy,
     MultiFactorStrategy,
     PopularityStrategy,
     SentimentStrategy,
     StrategyEngine,
     TechnicalStrategy,
+    VolumePriceStrategy,
 )
 from stock_service.quant.domain.backtest_rules import BacktestConfig
 from stock_service.quant.schemas import BacktestRequest
@@ -22,6 +28,12 @@ _strategy_engine.register("popularity", PopularityStrategy())
 _strategy_engine.register("sentiment", SentimentStrategy())
 _strategy_engine.register("technical", TechnicalStrategy())
 _strategy_engine.register("multi_factor", MultiFactorStrategy())
+_strategy_engine.register("volume_price", VolumePriceStrategy())
+_strategy_engine.register("momentum", MomentumStrategy())
+_strategy_engine.register("mean_reversion", MeanReversionStrategy())
+_strategy_engine.register("fund_flow", FundFlowStrategy())
+_strategy_engine.register("breakout", BreakoutStrategy())
+_strategy_engine.register("grid", GridStrategy())
 
 
 @router.post("/run", response_model=ApiResponse)
