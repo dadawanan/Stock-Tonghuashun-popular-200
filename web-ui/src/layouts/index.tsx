@@ -10,13 +10,19 @@ const { Header, Content } = Layout;
 
 const navKeys = {
   analysis: "/",
-  simAccount: "/sim-account",
+  strategies: "/quant/strategies",
+  backtest: "/quant/backtest",
+  sim: "/quant/sim",
+  optimizer: "/quant/optimizer",
   changelog: "/changelog",
 } as const;
 
 const menuItems: MenuProps["items"] = [
   { key: navKeys.analysis, label: "股票分析" },
-  { key: navKeys.simAccount, label: "模拟账户模块" },
+  { key: navKeys.strategies, label: "策略管理" },
+  { key: navKeys.backtest, label: "回测系统" },
+  { key: navKeys.sim, label: "模拟盘" },
+  { key: navKeys.optimizer, label: "参数优化" },
   { key: navKeys.changelog, label: "更新日志" },
 ];
 
@@ -78,9 +84,15 @@ export default function RootLayout() {
 
   const selectedKey = pathname.startsWith(navKeys.changelog)
     ? navKeys.changelog
-    : pathname.startsWith(navKeys.simAccount)
-      ? navKeys.simAccount
-      : navKeys.analysis;
+    : pathname.startsWith(navKeys.strategies)
+      ? navKeys.strategies
+      : pathname.startsWith(navKeys.backtest)
+        ? navKeys.backtest
+        : pathname.startsWith(navKeys.sim)
+          ? navKeys.sim
+          : pathname.startsWith(navKeys.optimizer)
+            ? navKeys.optimizer
+            : navKeys.analysis;
 
   return (
     <Layout className={styles.root}>

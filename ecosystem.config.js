@@ -49,5 +49,22 @@ module.exports = {
       restart_delay: 4000,
       exp_backoff_restart_delay: 1000,
     },
+    {
+      name: "stock-scheduler",
+      cwd: root,
+      interpreter: "none",
+      script: stockApiPython,
+      args: "-m stock_service.scheduler",
+      env: {
+        ...inheritShellEnv,
+        PYTHONPATH: path.join(root, "src"),
+      },
+      autorestart: true,
+      max_restarts: 100,
+      restart_delay: 10000,
+      exp_backoff_restart_delay: 5000,
+      // 只在交易时间运行（可选）
+      // cron_restart: "25 9,30 14 * * 1-5",
+    },
   ],
 };
