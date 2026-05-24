@@ -10,7 +10,7 @@ from stock_service.api.routes.auth import router as auth_router
 from stock_service.api.routes.health import router as health_router
 from stock_service.api.routes.popularity import router as popularity_router
 from stock_service.api.routes.query import router as query_router
-from stock_service.quant.api.routes import strategies, backtest, sim_trading, feedback, pending_orders
+from stock_service.quant.api.routes import strategies, backtest, sim_trading, feedback, pending_orders, market
 
 
 logger = logging.getLogger("stock-api")
@@ -39,3 +39,4 @@ app.include_router(backtest.router)
 app.include_router(sim_trading.router)
 app.include_router(feedback.router)
 app.include_router(pending_orders.router)
+app.include_router(market.router)

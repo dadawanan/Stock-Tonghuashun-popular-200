@@ -40,6 +40,7 @@ export default function SimTradingPage() {
   const [orders, setOrders] = useState<TradeOrder[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [realtimePrices, setRealtimePrices] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(false);
   const [selectedAccountKeys, setSelectedAccountKeys] = useState<React.Key[]>(
     [],
@@ -92,6 +93,19 @@ export default function SimTradingPage() {
       setPositions(Array.isArray(posData) ? posData : []);
       setOrders(Array.isArray(orderData) ? orderData : []);
       setPendingOrders(Array.isArray(pendingData) ? pendingData : []);
+
+      // Fetch real-time prices for positions
+      if (Array.isArray(posData) && posData.length > 0) {
+        const codes = posData.map((p: Position) => p.code);
+        try {
+          const prices = await quantApi.getRealtimePrices(codes);
+          setRealtimePrices(prices || {});
+        } catch {
+          // Silently fail - prices will show as N/A
+        }
+      } else {
+        setRealtimePrices({});
+      }
     } catch {
       message.error("加载账户详情失败");
     }
@@ -296,6 +310,46 @@ export default function SimTradingPage() {
       dataIndex: "avg_price",
       width: 80,
       render: (v: string) => parseFloat(v).toFixed(2),
+    },
+    {
+      title: "现价",
+      width: 80,
+      render: (_, record) => {
+        const price = realtimePrices[record.code];
+        return price != null ? price.toFixed(2) : <span style={{ color: "#999" }}>--</span>;
+      },
+    },
+    {
+      title: "市值",
+      width: 100,
+      render: (_, record) => {
+        const price = realtimePrices[record.code];
+        if (price == null) return <span style={{ color: "#999" }}>--</span>;
+        const value = price * record.quantity;
+        return `¥${value.toFixed(0)}`;
+      },
+    },
+    {
+      title: "盈亏",
+      width: 100,
+      render: (_, record) => {
+        const price = realtimePrices[record.code];
+        if (price == null) return <span style={{ color: "#999" }}>--</span>;
+        const cost = parseFloat(record.avg_price);
+        const pnl = (price - cost) * record.quantity;
+        const pnlPct = ((price - cost) / cost) * 100;
+        const isProfit = pnl >= 0;
+        return (
+          <div>
+            <div style={{ color: isProfit ? "#3f8600" : "#cf1322", fontWeight: 500 }}>
+              {isProfit ? "+" : ""}{pnl.toFixed(0)}
+            </div>
+            <div style={{ color: isProfit ? "#3f8600" : "#cf1322", fontSize: 12 }}>
+              {isProfit ? "+" : ""}{pnlPct.toFixed(2)}%
+            </div>
+          </div>
+        );
+      },
     },
     {
       title: "操作",

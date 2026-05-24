@@ -347,4 +347,10 @@ export const quantApi = {
 
   getSuggestions: (backtestId: number) =>
     http.get<any>(`/api/quant/feedback/suggestions/${backtestId}`),
+
+  // Market
+  getRealtimePrices: (codes: string[]) =>
+    http.get<Record<string, number | null>>('/api/quant/market/prices', {
+      params: { codes: codes.join(',') },
+    }),
 };
