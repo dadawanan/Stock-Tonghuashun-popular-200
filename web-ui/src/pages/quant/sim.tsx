@@ -370,9 +370,28 @@ export default function SimTradingPage() {
         <Title level={3}>模拟盘</Title>
         <Space>
           <Button onClick={() => setCreateModalOpen(true)}>新建账户</Button>
-          <Button onClick={handleSettlement} disabled={!selectedAccount}>
-            每日结算
-          </Button>
+          <Popconfirm
+            title="每日结算"
+            description={
+              <div style={{ maxWidth: 300 }}>
+                <p>执行以下操作：</p>
+                <ol style={{ paddingLeft: 16, margin: 0 }}>
+                  <li>更新 T+1 可卖数量（今日买入的股票明日可卖）</li>
+                  <li>获取当日收盘价，更新持仓市值和盈亏</li>
+                  <li>检查止损（亏损超过 8% 自动卖出）</li>
+                  <li>记录每日持仓快照</li>
+                </ol>
+                <p style={{ marginTop: 8, color: "#999" }}>
+                  建议在每个交易日收盘后（15:00 之后）执行
+                </p>
+              </div>
+            }
+            onConfirm={handleSettlement}
+            okText="执行结算"
+            cancelText="取消"
+          >
+            <Button disabled={!selectedAccount}>每日结算</Button>
+          </Popconfirm>
         </Space>
       </div>
 
@@ -520,13 +539,16 @@ export default function SimTradingPage() {
                   type="primary"
                   onClick={() => {
                     setSellPosition(null);
-                    tradeForm.setFieldsValue({ side: "buy", order_type: "market" });
+                    tradeForm.setFieldsValue({
+                      side: "buy",
+                      order_type: "market",
+                    });
                     setTradeModalOpen(true);
                   }}
                 >
                   买入
                 </Button>
-                <Button
+                {/* <Button
                   size="small"
                   danger
                   onClick={() => {
@@ -536,7 +558,7 @@ export default function SimTradingPage() {
                   }}
                 >
                   卖出
-                </Button>
+                </Button> */}
               </Space>
             }
           >
@@ -670,7 +692,11 @@ export default function SimTradingPage() {
           setSellPosition(null);
         }}
       >
-        <Form form={tradeForm} layout="vertical" initialValues={{ order_type: "market", side: "buy" }}>
+        <Form
+          form={tradeForm}
+          layout="vertical"
+          initialValues={{ order_type: "market", side: "buy" }}
+        >
           <Form.Item name="code" label="股票代码" rules={[{ required: true }]}>
             <Input placeholder="000725.SZ" />
           </Form.Item>
@@ -684,19 +710,27 @@ export default function SimTradingPage() {
           </Form.Item>
           {sellPosition && (
             <div style={{ marginBottom: 16, color: "#666" }}>
-              {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 |
-              可卖 {sellPosition.available_quantity} 股
+              {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 | 可卖{" "}
+              {sellPosition.available_quantity} 股
             </div>
           )}
           <Form.Item name="quantity" label="数量" rules={[{ required: true }]}>
             <InputNumber
               min={100}
-              max={tradeForm.getFieldValue("side") === "sell" ? sellPosition?.available_quantity : undefined}
+              max={
+                tradeForm.getFieldValue("side") === "sell"
+                  ? sellPosition?.available_quantity
+                  : undefined
+              }
               step={100}
               style={{ width: "100%" }}
             />
           </Form.Item>
-          <Form.Item name="order_type" label="订单类型" rules={[{ required: true }]}>
+          <Form.Item
+            name="order_type"
+            label="订单类型"
+            rules={[{ required: true }]}
+          >
             <Select
               options={[
                 { value: "market", label: "立即成交（市价单）" },
@@ -706,7 +740,11 @@ export default function SimTradingPage() {
           </Form.Item>
           {tradeForm.getFieldValue("order_type") === "limit" && (
             <>
-              <Form.Item name="target_price" label="目标价格" rules={[{ required: true }]}>
+              <Form.Item
+                name="target_price"
+                label="目标价格"
+                rules={[{ required: true }]}
+              >
                 <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} />
               </Form.Item>
               <Form.Item name="note" label="备注">
@@ -718,7 +756,9 @@ export default function SimTradingPage() {
             {tradeForm.getFieldValue("order_type") === "market" ? (
               <>
                 <div>市价单：使用实时行情价立即成交</div>
-                <div>仅在交易时间（周一至周五 9:30-11:30, 13:00-15:00）可下单</div>
+                <div>
+                  仅在交易时间（周一至周五 9:30-11:30, 13:00-15:00）可下单
+                </div>
               </>
             ) : (
               <>
