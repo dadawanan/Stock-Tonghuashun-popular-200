@@ -9,6 +9,7 @@
     "start": "npm run dev"
   },
   "dependencies": {
+    "@ant-design/charts": "^2.6.7",
     "antd": "^6.3.7",
     "dayjs": "^1.11.20",
     "umi": "^4.6.48"

@@ -19,6 +19,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import BacktestChart from "../../components/BacktestChart";
 import {
   BacktestResult,
   BacktestTrade,
@@ -388,6 +389,8 @@ export default function BacktestPage() {
 
       {selectedResult && (
         <>
+          <BacktestChart backtestId={selectedResult.id} />
+
           <Card title={`交易明细 (回测 #${selectedResult.id})`} style={{ marginBottom: 16 }}>
             <Table columns={tradeColumns} dataSource={trades} rowKey={(record) => `${record.code}-${record.trade_date}-${record.side}`} size="small" pagination={{ pageSize: 20 }} />
           </Card>

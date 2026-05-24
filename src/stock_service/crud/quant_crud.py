@@ -473,6 +473,18 @@ async def batch_insert_position_snapshots(session: AsyncSession, snapshots: list
     return len(snapshots)
 
 
+async def get_position_snapshots(
+    session: AsyncSession, account_id: int
+) -> list[dict]:
+    """获取账户的持仓快照历史"""
+    result = await session.execute(
+        select(PositionDailySnapshot)
+        .where(PositionDailySnapshot.account_id == account_id)
+        .order_by(PositionDailySnapshot.trade_date)
+    )
+    return _rows_to_dicts(result.scalars().all())
+
+
 # ── FeedbackLog ──
 
 

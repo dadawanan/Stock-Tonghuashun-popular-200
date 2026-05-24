@@ -308,11 +308,32 @@ export const quantApi = {
   getOrders: (accountId: number) =>
     http.get<TradeOrder[]>(`/api/quant/sim/accounts/${accountId}/orders`),
 
+  getDailyAssets: (accountId: number) =>
+    http.get<{ trade_date: string; market_value: number; pnl: number }[]>(
+      `/api/quant/sim/accounts/${accountId}/daily-assets`
+    ),
+
+  getTradeAnalysis: (accountId: number) =>
+    http.get<{
+      total_trades: number;
+      buy_count: number;
+      sell_count: number;
+      win_count: number;
+      loss_count: number;
+      win_rate: number;
+      total_pnl: number;
+      avg_win: number;
+      avg_loss: number;
+      profit_loss_ratio: number;
+      avg_holding_days: number;
+      max_consecutive_losses: number;
+    }>(`/api/quant/sim/accounts/${accountId}/trade-analysis`),
+
   executeTrade: (data: { account_id: number; code: string; side: 'buy' | 'sell'; quantity: number; price?: number }) =>
     http.post<TradeOrder & { pnl?: number }>('/api/quant/sim/trade', data),
 
   dailySettlement: (accountId: number, tradeDate: string) =>
-    http.post<{ stop_loss_triggered: string[] }>(
+    http.post<any>(
       `/api/quant/sim/settlement?account_id=${accountId}&trade_date=${tradeDate}`
     ),
 

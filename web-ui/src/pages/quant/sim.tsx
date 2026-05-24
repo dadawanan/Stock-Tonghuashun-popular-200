@@ -20,6 +20,8 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import AccountChart from "../../components/AccountChart";
+import TradeAnalysis from "../../components/TradeAnalysis";
 import {
   PendingOrder,
   quantApi,
@@ -503,6 +505,9 @@ export default function SimTradingPage() {
           </Col>
         </Row>
       )}
+
+      {selectedAccount && <AccountChart accountId={selectedAccount.id} />}
+      {selectedAccount && <TradeAnalysis accountId={selectedAccount.id} />}
 
       <Row gutter={16}>
         <Col span={8}>
