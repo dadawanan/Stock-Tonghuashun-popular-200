@@ -9,7 +9,11 @@ from pydantic import BaseModel
 
 class StrategyCreate(BaseModel):
     name: str
-    type: Literal["popularity", "sentiment", "technical", "multi_factor"]
+    type: Literal[
+        "popularity", "sentiment", "technical", "multi_factor",
+        "volume_price", "momentum", "mean_reversion",
+        "fund_flow", "breakout", "grid",
+    ]
     params: dict = {}
     description: str | None = None
 
