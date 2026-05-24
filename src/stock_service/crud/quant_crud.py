@@ -656,6 +656,23 @@ async def get_latest_stock_analysis(
     return _rows_to_dicts([row])[0]
 
 
+async def get_benchmark_daily(
+    session: AsyncSession, start_date: date, end_date: date,
+    benchmark_code: str = "000300.SH"
+) -> list[dict]:
+    """获取基准指数日线数据"""
+    result = await session.execute(
+        select(StockDaily)
+        .where(
+            StockDaily.code == benchmark_code,
+            StockDaily.trade_date >= start_date,
+            StockDaily.trade_date <= end_date,
+        )
+        .order_by(StockDaily.trade_date)
+    )
+    return _rows_to_dicts(result.scalars().all())
+
+
 # ── PendingOrder ──
 
 

@@ -56,6 +56,15 @@ class BacktestEngine:
             stock_codes[0] if stock_codes else None, start_date, end_date
         )
 
+        # Fetch benchmark data for comparison
+        benchmark_data = await quant_crud.get_benchmark_daily(
+            self._session, start_date, end_date
+        )
+        benchmark_prices = {
+            r["trade_date"]: float(r["close"]) for r in benchmark_data
+        }
+        benchmark_start_price = next(iter(benchmark_prices.values()), None) if benchmark_prices else None
+
         for trade_date in trading_dates:
             self._rules.update_available_quantity(positions)
 
@@ -177,13 +186,21 @@ class BacktestEngine:
 
             position_value = sum(p.market_value for p in positions.values())
             total_assets = cash + position_value
+
+            # Calculate benchmark NAV
+            benchmark_nav = None
+            if benchmark_start_price and benchmark_start_price > 0:
+                bench_price = benchmark_prices.get(trade_date)
+                if bench_price:
+                    benchmark_nav = bench_price / benchmark_start_price
+
             nav_series.append({
                 "trade_date": trade_date,
                 "nav": total_assets / config.initial_capital,
                 "total_assets": total_assets,
                 "cash": cash,
                 "position_value": position_value,
-                "benchmark_nav": None,
+                "benchmark_nav": benchmark_nav,
             })
 
         metrics = self._calculate_metrics(

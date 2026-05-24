@@ -39,6 +39,7 @@ export default function BacktestChart({ backtestId }: BacktestChartProps) {
   const chartData = navData.map((item) => ({
     date: item.trade_date,
     nav: item.nav != null ? Number(item.nav) : 1,
+    benchmark: item.benchmark_nav != null ? Number(item.benchmark_nav) : null,
     totalAssets: item.total_assets != null ? Number(item.total_assets) : 0,
     cash: item.cash != null ? Number(item.cash) : 0,
     positionValue: item.position_value != null ? Number(item.position_value) : 0,
@@ -63,24 +64,52 @@ export default function BacktestChart({ backtestId }: BacktestChartProps) {
     return: Math.round((item.nav - 1) * 10000) / 100, // 百分比
   }));
 
+  // 准备双线数据
+  const hasBenchmark = chartData.some((d) => d.benchmark != null);
+  const dualLineData = hasBenchmark
+    ? chartData.flatMap((d) => [
+        { date: d.date, type: "策略净值", value: d.nav },
+        ...(d.benchmark != null ? [{ date: d.date, type: "沪深300", value: d.benchmark }] : []),
+      ])
+    : chartData.map((d) => ({ date: d.date, type: "策略净值", value: d.nav }));
+
   return (
     <Row gutter={16}>
       <Col span={24}>
         <Card title="净值曲线" size="small" style={{ marginBottom: 16 }}>
-          <Line
-            data={chartData}
-            xField="date"
-            yField="nav"
-            height={300}
-            point={{ size: 0 }}
-            line={{ style: { lineWidth: 2 } }}
-            tooltip={{
-              formatter: (datum: any) => ({
-                name: "净值",
-                value: datum.nav?.toFixed(4),
-              }),
-            }}
-          />
+          {hasBenchmark ? (
+            <Line
+              data={dualLineData}
+              xField="date"
+              yField="value"
+              seriesField="type"
+              height={300}
+              point={{ size: 0 }}
+              line={{ style: { lineWidth: 2 } }}
+              color={["#1890ff", "#999"]}
+              tooltip={{
+                formatter: (datum: any) => ({
+                  name: datum.type,
+                  value: datum.value?.toFixed(4),
+                }),
+              }}
+            />
+          ) : (
+            <Line
+              data={chartData}
+              xField="date"
+              yField="nav"
+              height={300}
+              point={{ size: 0 }}
+              line={{ style: { lineWidth: 2 } }}
+              tooltip={{
+                formatter: (datum: any) => ({
+                  name: "净值",
+                  value: datum.nav?.toFixed(4),
+                }),
+              }}
+            />
+          )}
         </Card>
       </Col>
       <Col span={12}>
