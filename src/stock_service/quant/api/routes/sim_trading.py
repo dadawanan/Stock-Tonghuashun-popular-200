@@ -51,6 +51,21 @@ async def get_account(
     return ApiResponse(code=0, msg="ok", data=account)
 
 
+@router.delete("/accounts/{account_id}", response_model=ApiResponse)
+async def delete_account(
+    account_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_user),
+):
+    engine = SimTradingEngine(session)
+    if not await engine.verify_ownership(current_user.id, account_id):
+        raise HTTPException(403, "Not your account")
+    ok = await quant_crud.delete_sim_account(session, account_id)
+    if not ok:
+        raise HTTPException(404, "Account not found")
+    return ApiResponse(code=0, msg="ok")
+
+
 @router.get("/accounts/{account_id}/positions", response_model=ApiResponse)
 async def get_positions(
     account_id: int,

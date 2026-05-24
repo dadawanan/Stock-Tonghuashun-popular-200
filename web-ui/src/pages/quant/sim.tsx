@@ -36,10 +36,14 @@ export default function SimTradingPage() {
   const [orders, setOrders] = useState<TradeOrder[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedAccountKeys, setSelectedAccountKeys] = useState<React.Key[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [sellPosition, setSellPosition] = useState<Position | null>(null);
   const [createForm] = Form.useForm();
   const [tradeForm] = Form.useForm();
+  const [sellForm] = Form.useForm();
 
   useEffect(() => {
     loadAccounts();
@@ -132,6 +136,88 @@ export default function SimTradingPage() {
     }
   };
 
+  const handleDeleteAccount = async (id: number) => {
+    try {
+      await quantApi.deleteSimAccount(id);
+      message.success("账户已删除");
+      if (selectedAccount?.id === id) {
+        setSelectedAccount(null);
+        setPositions([]);
+        setOrders([]);
+      }
+      setSelectedAccountKeys((prev) => prev.filter((k) => k !== id));
+      loadAccounts();
+    } catch (e: any) {
+      message.error(e?.message || "删除失败");
+    }
+  };
+
+  const handleBatchDeleteAccounts = () => {
+    if (selectedAccountKeys.length === 0) {
+      message.warning("请先选择要删除的账户");
+      return;
+    }
+
+    Modal.confirm({
+      title: "确认批量删除",
+      content: `确定要删除选中的 ${selectedAccountKeys.length} 个模拟账户吗？此操作不可恢复。`,
+      okText: "确认删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const ids = selectedAccountKeys.map(Number);
+          let deleted = 0;
+          for (const id of ids) {
+            try {
+              await quantApi.deleteSimAccount(id);
+              deleted++;
+            } catch {}
+          }
+          message.success(`成功删除 ${deleted} 个账户`);
+          setSelectedAccountKeys([]);
+          if (selectedAccount && ids.includes(selectedAccount.id)) {
+            setSelectedAccount(null);
+            setPositions([]);
+            setOrders([]);
+          }
+          loadAccounts();
+        } catch {
+          message.error("批量删除失败");
+        }
+      },
+    });
+  };
+
+  const handleOpenSellModal = (position: Position) => {
+    setSellPosition(position);
+    sellForm.setFieldsValue({
+      code: position.code,
+      quantity: position.available_quantity,
+      price: null, // 需要从后端获取最新价格
+    });
+    setSellModalOpen(true);
+  };
+
+  const handleSellFromPosition = async () => {
+    if (!selectedAccount || !sellPosition) return;
+    try {
+      const values = await sellForm.validateFields();
+      await quantApi.executeTrade({
+        account_id: selectedAccount.id,
+        code: values.code,
+        side: "sell",
+        quantity: values.quantity,
+        price: values.price,
+      });
+      message.success("卖出成功");
+      setSellModalOpen(false);
+      selectAccount(selectedAccount);
+    } catch (e: any) {
+      message.error(e?.message || "卖出失败");
+    }
+  };
+
   const positionColumns: ColumnsType<Position> = [
     { title: "股票代码", dataIndex: "code", width: 110 },
     { title: "股票名称", dataIndex: "stock_name", width: 100 },
@@ -142,6 +228,20 @@ export default function SimTradingPage() {
       dataIndex: "avg_price",
       width: 80,
       render: (v: string) => parseFloat(v).toFixed(2),
+    },
+    {
+      title: "操作",
+      width: 80,
+      render: (_, record) => (
+        <Button
+          size="small"
+          danger
+          disabled={!record.available_quantity || record.available_quantity <= 0}
+          onClick={() => handleOpenSellModal(record)}
+        >
+          卖出
+        </Button>
+      ),
     },
   ];
 
@@ -244,13 +344,24 @@ export default function SimTradingPage() {
 
       <Row gutter={16}>
         <Col span={8}>
-          <Card title="账户列表" size="small">
+          <Card
+            title="账户列表"
+            size="small"
+            extra={
+              selectedAccountKeys.length > 0 && (
+                <Button size="small" danger onClick={handleBatchDeleteAccounts}>
+                  批量删除 ({selectedAccountKeys.length})
+                </Button>
+              )
+            }
+          >
             <Table
               columns={[
-                { title: "名称", dataIndex: "account_name" },
+                { title: "名称", dataIndex: "account_name", width: 120 },
                 {
                   title: "策略",
                   dataIndex: "strategy_id",
+                  width: 100,
                   render: (id: number | null) => {
                     if (!id) return <span style={{ color: "#999" }}>未绑定</span>;
                     const s = strategies.find((s) => s.id === id);
@@ -260,7 +371,30 @@ export default function SimTradingPage() {
                 {
                   title: "总资产",
                   dataIndex: "total_assets",
+                  width: 100,
                   render: (v: string) => `¥${parseFloat(v).toFixed(2)}`,
+                },
+                {
+                  title: "操作",
+                  width: 60,
+                  render: (_, record) => (
+                    <Popconfirm
+                      title="确定删除此账户？"
+                      onConfirm={(e) => {
+                        e?.stopPropagation();
+                        handleDeleteAccount(record.id);
+                      }}
+                      onCancel={(e) => e?.stopPropagation()}
+                    >
+                      <Button
+                        size="small"
+                        danger
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  ),
                 },
               ]}
               dataSource={accounts}
@@ -268,6 +402,10 @@ export default function SimTradingPage() {
               loading={loading}
               size="small"
               pagination={false}
+              rowSelection={{
+                selectedRowKeys: selectedAccountKeys,
+                onChange: (keys) => setSelectedAccountKeys(keys),
+              }}
               onRow={(record) => ({
                 onClick: () => selectAccount(record),
                 style: {
@@ -344,6 +482,41 @@ export default function SimTradingPage() {
           </Form.Item>
           <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
             * 价格为实时行情价，仅在交易时间（周一至周五 9:30-11:30, 13:00-15:00）可下单
+          </div>
+        </Form>
+      </Modal>
+
+      {/* Sell Modal */}
+      <Modal
+        title="卖出持仓"
+        open={sellModalOpen}
+        onOk={handleSellFromPosition}
+        onCancel={() => setSellModalOpen(false)}
+      >
+        <Form form={sellForm} layout="vertical">
+          <Form.Item name="code" label="股票代码">
+            <Input disabled />
+          </Form.Item>
+          {sellPosition && (
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary">
+                {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 | 可卖 {sellPosition.available_quantity} 股
+              </Text>
+            </div>
+          )}
+          <Form.Item name="quantity" label="卖出数量" rules={[{ required: true }]}>
+            <InputNumber
+              min={100}
+              max={sellPosition?.available_quantity || 0}
+              step={100}
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+          <Form.Item name="price" label="价格（留空使用实时价）">
+            <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} placeholder="实时行情价" />
+          </Form.Item>
+          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
+            * 交易时间内使用实时行情价，非交易时间可手动输入价格
           </div>
         </Form>
       </Modal>

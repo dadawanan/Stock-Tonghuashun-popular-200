@@ -413,6 +413,39 @@ async def update_sim_account(session: AsyncSession, account_id: int, data: dict)
     return _rows_to_dicts([account])[0]
 
 
+async def delete_sim_account(session: AsyncSession, account_id: int) -> bool:
+    """删除模拟账户及其关联的持仓和订单"""
+    account = await session.get(SimAccount, account_id)
+    if not account:
+        return False
+
+    # 删除关联的持仓
+    positions = await session.execute(
+        select(PositionAccount).where(PositionAccount.account_id == account_id)
+    )
+    for pos in positions.scalars().all():
+        await session.delete(pos)
+
+    # 删除关联的订单
+    orders = await session.execute(
+        select(TradeOrder).where(TradeOrder.account_id == account_id)
+    )
+    for order in orders.scalars().all():
+        await session.delete(order)
+
+    # 删除关联的持仓快照
+    snapshots = await session.execute(
+        select(PositionDailySnapshot).where(PositionDailySnapshot.account_id == account_id)
+    )
+    for snap in snapshots.scalars().all():
+        await session.delete(snap)
+
+    # 删除账户
+    await session.delete(account)
+    await session.flush()
+    return True
+
+
 # ── PositionDailySnapshot ──
 
 
