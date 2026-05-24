@@ -374,4 +374,21 @@ export const quantApi = {
     http.get<Record<string, number | null>>('/api/quant/market/prices', {
       params: { codes: codes.join(',') },
     }),
+
+  // Optimizer
+  gridSearch: (data: {
+    strategy_id: number;
+    param_grid: Record<string, any[]>;
+    stock_codes?: string[];
+    start_date: string;
+    end_date: string;
+    initial_capital?: number;
+    metric?: string;
+    top_n?: number;
+  }) => http.post<{ params: Record<string, any>; metrics: any; backtest_id: number }[]>(
+    '/api/quant/optimizer/grid-search', data
+  ),
+
+  suggestParams: (strategyType: string) =>
+    http.get<Record<string, any[]>>(`/api/quant/optimizer/suggest/${strategyType}`),
 };

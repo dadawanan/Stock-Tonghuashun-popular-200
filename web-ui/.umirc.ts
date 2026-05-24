@@ -10,6 +10,7 @@ export default defineConfig({
     { path: "/quant/strategies", component: "quant/strategies" },
     { path: "/quant/backtest", component: "quant/backtest" },
     { path: "/quant/sim", component: "quant/sim" },
+    { path: "/quant/optimizer", component: "quant/optimizer" },
     { path: "/sim-account", component: "sim-account" },
     { path: "/changelog", component: "changelog" },
     { path: "/docs", component: "docs" },
