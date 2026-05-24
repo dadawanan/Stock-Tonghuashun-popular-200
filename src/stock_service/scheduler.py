@@ -245,10 +245,9 @@ async def check_pending_orders() -> None:
 
             for order in pending_orders:
                 try:
-                    # 获取实时价格
-                    from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
-                    quote = await asyncio.to_thread(fetch_quote, order["code"])
-                    current_price = quote.get("latest_price")
+                    # 获取实时价格（新浪）
+                    from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                    current_price = await asyncio.to_thread(fetch_realtime_price, order["code"])
 
                     if not current_price or current_price <= 0:
                         continue
