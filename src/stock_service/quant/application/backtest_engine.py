@@ -50,6 +50,7 @@ class BacktestEngine:
         positions: dict[str, Position] = {}
         nav_series: list[dict] = []
         trades: list[dict] = []
+        peak_assets = config.initial_capital  # 用于账户级回撤计算
 
         trading_dates = await self._get_trading_dates(
             stock_codes[0] if stock_codes else None, start_date, end_date
@@ -96,6 +97,7 @@ class BacktestEngine:
                         available_quantity=0,
                         market_value=price * qty,
                         pnl=0, pnl_pct=0,
+                        highest_price=price, lowest_price=price,
                     )
                     trades.append({
                         "code": signal.code, "side": "buy",
@@ -122,11 +124,56 @@ class BacktestEngine:
                         "pnl": round(pnl, 2), "signal_source": strategy_name,
                     })
 
+            # 更新持仓市值、最高/最低价、检查止盈止损
+            codes_to_sell = []
             for code, pos in positions.items():
                 price = context.market_data.get(code, {}).get("close", pos.avg_price)
                 pos.market_value = price * pos.quantity
                 pos.pnl = (price - pos.avg_price) * pos.quantity
                 pos.pnl_pct = (price - pos.avg_price) / pos.avg_price if pos.avg_price else 0
+
+                # 更新最高/最低价
+                if price > pos.highest_price:
+                    pos.highest_price = price
+                if price < pos.lowest_price or pos.lowest_price == 0:
+                    pos.lowest_price = price
+
+                # 检查止损
+                stop_triggered, stop_reason = self._rules.check_stop_loss(pos, price, config)
+                if stop_triggered and pos.available_quantity > 0:
+                    codes_to_sell.append((code, stop_reason))
+
+                # 检查止盈
+                tp_triggered, tp_reason = self._rules.check_take_profit(pos, price, config)
+                if tp_triggered and pos.available_quantity > 0:
+                    codes_to_sell.append((code, tp_reason))
+
+            # 执行止盈止损卖出
+            for code, reason in codes_to_sell:
+                if code not in positions:
+                    continue
+                pos = positions[code]
+                price = context.market_data.get(code, {}).get("close", pos.avg_price)
+                revenue = self._rules.calculate_sell_revenue(price, pos.quantity, config)
+                pnl = revenue - (pos.avg_price * pos.quantity)
+                cash += revenue
+                del positions[code]
+                trades.append({
+                    "code": code, "side": "sell",
+                    "price": price, "quantity": pos.quantity,
+                    "trade_date": trade_date,
+                    "pnl": round(pnl, 2), "signal_source": f"auto:{reason}",
+                })
+
+            # 检查账户级回撤
+            total_assets = cash + sum(p.market_value for p in positions.values())
+            if total_assets > peak_assets:
+                peak_assets = total_assets
+            drawdown_ok, drawdown_reason = self._rules.check_account_drawdown(
+                total_assets, peak_assets, config
+            )
+            if not drawdown_ok:
+                logger.warning(f"账户回撤限制触发: {drawdown_reason}")
 
             position_value = sum(p.market_value for p in positions.values())
             total_assets = cash + position_value

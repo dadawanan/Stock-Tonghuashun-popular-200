@@ -29,7 +29,14 @@ class SimTradingEngine:
             "slippage": 0.002,
             "max_position_pct": 0.2,
             "max_holdings": 10,
-            "stop_loss_pct": -0.08,
+            # 止损
+            "stop_loss_pct": -0.08,           # 固定止损 -8%
+            "trailing_stop_pct": 0.0,         # 移动止损 (0=禁用)
+            # 止盈
+            "take_profit_pct": 0.0,           # 固定止盈 (0=禁用)
+            "trailing_take_profit_pct": 0.0,  # 移动止盈 (0=禁用)
+            # 账户风控
+            "max_drawdown_pct": -0.20,        # 最大回撤 -20%
         }
         if config:
             default_config.update(config)
@@ -188,14 +195,31 @@ class SimTradingEngine:
         await self._update_total_assets(account_id)
         return {**order, "pnl": round(pnl, 2)}
 
-    async def daily_settlement(self, account_id: int, trade_date: date) -> list[str]:
+    async def daily_settlement(self, account_id: int, trade_date: date) -> dict:
+        """每日结算
+
+        Returns:
+            {"stop_loss": [...], "take_profit": [...], "drawdown_warning": bool}
+        """
+        from stock_service.quant.domain.backtest_rules import BacktestConfig, BacktestRules, Position
+
         positions = await quant_crud.get_positions(self._session, account_id)
         account = await quant_crud.get_sim_account(self._session, account_id)
-        config = account.get("config") or {}
-        stop_loss_pct = config.get("stop_loss_pct", -0.08)
+        config_data = account.get("config") or {}
+
+        # 构建 BacktestConfig
+        config = BacktestConfig(
+            stop_loss_pct=config_data.get("stop_loss_pct", -0.08),
+            trailing_stop_pct=config_data.get("trailing_stop_pct", 0),
+            take_profit_pct=config_data.get("take_profit_pct", 0),
+            trailing_take_profit_pct=config_data.get("trailing_take_profit_pct", 0),
+            max_drawdown_pct=config_data.get("max_drawdown_pct", -0.20),
+        )
+        rules = BacktestRules()
 
         snapshots = []
         triggered_stop_loss = []
+        triggered_take_profit = []
 
         for pos in positions:
             await quant_crud.update_position(self._session, account_id, pos["code"], {
@@ -212,6 +236,25 @@ class SimTradingEngine:
             pnl = (close_price - float(pos["avg_price"])) * pos["quantity"]
             pnl_pct = (close_price - float(pos["avg_price"])) / float(pos["avg_price"]) if pos["avg_price"] else 0
 
+            # 构建 Position 对象用于止盈止损判断
+            position = Position(
+                code=pos["code"],
+                quantity=pos["quantity"],
+                avg_price=float(pos["avg_price"]),
+                available_quantity=pos["quantity"],
+                market_value=market_value,
+                pnl=pnl,
+                pnl_pct=pnl_pct,
+                highest_price=float(pos.get("highest_price") or close_price),
+                lowest_price=float(pos.get("lowest_price") or close_price),
+            )
+
+            # 更新最高/最低价
+            if close_price > position.highest_price:
+                position.highest_price = close_price
+            if close_price < position.lowest_price:
+                position.lowest_price = close_price
+
             snapshots.append({
                 "account_id": account_id,
                 "code": pos["code"],
@@ -225,15 +268,40 @@ class SimTradingEngine:
                 "pnl_pct": Decimal(str(round(pnl_pct, 4))),
             })
 
-            if pnl_pct <= stop_loss_pct:
-                triggered_stop_loss.append(pos["code"])
+            # 检查止损
+            stop_triggered, stop_reason = rules.check_stop_loss(position, close_price, config)
+            if stop_triggered:
+                triggered_stop_loss.append({"code": pos["code"], "reason": stop_reason})
+
+            # 检查止盈
+            tp_triggered, tp_reason = rules.check_take_profit(position, close_price, config)
+            if tp_triggered:
+                triggered_take_profit.append({"code": pos["code"], "reason": tp_reason})
 
         if snapshots:
             await quant_crud.batch_insert_position_snapshots(self._session, snapshots)
 
         await self._update_total_assets(account_id)
 
-        return triggered_stop_loss
+        # 检查账户级回撤
+        total_assets = float(account.get("total_assets", 0))
+        peak_assets = float(account.get("peak_assets") or total_assets)
+        if total_assets > peak_assets:
+            await quant_crud.update_sim_account(self._session, account_id, {
+                "peak_assets": Decimal(str(round(total_assets, 2))),
+            })
+            peak_assets = total_assets
+
+        drawdown_ok, drawdown_reason = rules.check_account_drawdown(
+            total_assets, peak_assets, config
+        )
+
+        return {
+            "stop_loss": triggered_stop_loss,
+            "take_profit": triggered_take_profit,
+            "drawdown_warning": not drawdown_ok,
+            "drawdown_reason": drawdown_reason if not drawdown_ok else None,
+        }
 
     async def _update_total_assets(self, account_id: int) -> None:
         account = await quant_crud.get_sim_account(self._session, account_id)

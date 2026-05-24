@@ -143,6 +143,8 @@ class PositionAccount(Base):
     avg_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     available_quantity: Mapped[Optional[int]] = mapped_column(Integer)
+    highest_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    lowest_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
 
     __table_args__ = (
         UniqueConstraint("account_id", "code", name="uq_position_account"),
@@ -209,6 +211,7 @@ class SimAccount(Base):
     initial_capital: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=1000000)
     current_capital: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     total_assets: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    peak_assets: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     status: Mapped[str] = mapped_column(VARCHAR(16), default="active")
     strategy_id: Mapped[Optional[int]] = mapped_column(BIGINT)
     config: Mapped[Optional[dict]] = mapped_column(JSONB)
