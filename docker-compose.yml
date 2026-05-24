@@ -1,0 +1,82 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: stock-db
+    environment:
+      POSTGRES_DB: stock_db
+      POSTGRES_USER: postgresql
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-stock123456}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema_v2.sql:/docker-entrypoint-initdb.d/01-schema-v2.sql
+      - ./schema_quant_v1.sql:/docker-entrypoint-initdb.d/02-schema-quant.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgresql -d stock_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Python API Server
+  stock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: stock-api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: stock_db
+      DB_USER: postgresql
+      DB_PASSWORD: ${DB_PASSWORD:-stock123456}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-here}
+      PYTHONPATH: /app/src
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+
+  # Python Scheduler
+  stock-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: stock-scheduler
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: stock_db
+      DB_USER: postgresql
+      DB_PASSWORD: ${DB_PASSWORD:-stock123456}
+      PYTHONPATH: /app/src
+    command: ["python", "-m", "stock_service.scheduler"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+
+  # Frontend
+  stock-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: stock-web
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

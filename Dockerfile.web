@@ -1,0 +1,25 @@
+# Build stage
+FROM node:20 AS builder
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+COPY web-ui/ .
+
+RUN pnpm install --frozen-lockfile
+
+RUN pnpm exec umi build
+
+# Production stage
+FROM node:20
+
+WORKDIR /app
+
+RUN npm install -g serve
+
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 8001
+
+CMD ["serve", "dist", "-l", "8001", "--single"]
