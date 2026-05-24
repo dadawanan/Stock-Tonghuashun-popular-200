@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Card, Row, Col, Spin, Empty } from "antd";
 import { Line } from "@ant-design/charts";
+import { quantApi } from "../utils";
 
 interface DailySnapshot {
   trade_date: string;
   market_value: number;
   pnl: number;
-  pnl_pct: number;
 }
 
 interface AccountChartProps {
@@ -24,16 +24,8 @@ export default function AccountChart({ accountId }: AccountChartProps) {
   const loadSnapshots = async () => {
     setLoading(true);
     try {
-      // 从 position_daily_snapshot 聚合每日总资产
-      const resp = await fetch(`/api/quant/sim/accounts/${accountId}/daily-assets`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-        },
-      });
-      const data = await resp.json();
-      if (data.code === 0 && Array.isArray(data.data)) {
-        setSnapshots(data.data);
-      }
+      const data = await quantApi.getDailyAssets(accountId);
+      setSnapshots(Array.isArray(data) ? data : []);
     } catch {
       // ignore
     } finally {
