@@ -106,11 +106,86 @@ async def run_pipeline() -> None:
             await session.commit()
             logger.info("人气榜流水线执行完成")
 
+            # 更新人气榜股票的日线数据
+            await update_popularity_daily_data()
+
             # 自动执行模拟盘交易
             await auto_trade_for_accounts(session, new_entries)
 
     except Exception as e:
         logger.error(f"流水线执行失败: {e}", exc_info=True)
+
+
+async def update_popularity_daily_data() -> None:
+    """更新人气榜股票的日线数据和指标"""
+    import asyncio
+    import pandas as pd
+    from sqlalchemy import text
+
+    try:
+        async with AsyncSessionFactory() as session:
+            # 获取最新人气榜股票中缺少日线数据的
+            result = await session.execute(text("""
+                SELECT DISTINCT ps.stock_code
+                FROM popularity_snapshot ps
+                WHERE ps.trade_date = (SELECT MAX(trade_date) FROM popularity_snapshot)
+                AND ps.stock_code NOT IN (
+                    SELECT DISTINCT code FROM stock_daily
+                    WHERE trade_date >= NOW() - INTERVAL '3 days'
+                )
+                ORDER BY ps.stock_code
+                LIMIT 50
+            """))
+            codes = [row[0] for row in result.fetchall()]
+
+        if not codes:
+            logger.info("[daily-data] 所有人气榜股票数据已是最新")
+            return
+
+        logger.info(f"[daily-data] 需要更新 {len(codes)} 只股票的日线数据")
+
+        end_date = date.today()
+        start_date = end_date - timedelta(days=365)
+
+        total_rows = 0
+        for code in codes:
+            try:
+                from stock_service.infrastructure.providers.sina_provider import fetch_kline_sina
+                df = await asyncio.to_thread(
+                    fetch_kline_sina, code,
+                    start_date.strftime("%Y%m%d"),
+                    end_date.strftime("%Y%m%d"),
+                )
+                if df.empty:
+                    continue
+
+                df["code"] = code
+                df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+                records = df[["code", "trade_date", "open", "high", "low", "close", "volume"]].to_dict("records")
+                for row in records:
+                    row["amount"] = 0
+
+                async with AsyncSessionFactory() as session:
+                    for row in records:
+                        await session.execute(text("""
+                            INSERT INTO stock_daily (code, trade_date, open, high, low, close, volume, amount, created_at, updated_at)
+                            VALUES (:code, :trade_date, :open, :high, :low, :close, :volume, :amount, NOW(), NOW())
+                            ON CONFLICT (code, trade_date) DO UPDATE SET
+                                open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
+                                close = EXCLUDED.close, volume = EXCLUDED.volume, amount = EXCLUDED.amount,
+                                updated_at = NOW()
+                        """), row)
+                    await session.commit()
+
+                total_rows += len(records)
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"[daily-data] {code} 失败: {e}")
+
+        logger.info(f"[daily-data] 完成: {total_rows} 行数据")
+
+    except Exception as e:
+        logger.error(f"[daily-data] 失败: {e}", exc_info=True)
 
 
 async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:

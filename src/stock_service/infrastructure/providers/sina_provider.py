@@ -1,6 +1,8 @@
 """新浪行情数据提供者"""
 
 import logging
+
+import pandas as pd
 import requests
 
 logger = logging.getLogger(__name__)
@@ -84,3 +86,39 @@ def fetch_realtime_quote(code: str) -> dict | None:
         logger.warning(f"获取 {code} 实时行情失败: {e}")
 
     return None
+
+
+def fetch_kline_sina(code: str, start: str, end: str) -> pd.DataFrame:
+    """获取日K线数据（通过akshare的新浪接口）
+
+    Args:
+        code: 股票代码，如 000001.SZ
+        start: 开始日期，格式 YYYYMMDD
+        end: 结束日期，格式 YYYYMMDD
+
+    Returns:
+        DataFrame with columns: trade_date, open, high, low, close, volume
+    """
+    import akshare as ak
+
+    symbol = code.split(".")[0]
+    market = code.split(".")[1].lower() if "." in code else ""
+
+    if market == "sh":
+        sina_code = f"sh{symbol}"
+    elif market == "sz":
+        sina_code = f"sz{symbol}"
+    else:
+        return pd.DataFrame()
+
+    try:
+        df = ak.stock_zh_a_daily(symbol=sina_code, start_date=start, end_date=end, adjust="qfq")
+        if df.empty:
+            return pd.DataFrame()
+
+        df = df.rename(columns={"date": "trade_date"})
+        df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+        return df[["trade_date", "open", "high", "low", "close", "volume"]]
+    except Exception as e:
+        logger.warning(f"获取 {code} 日线数据失败: {e}")
+        return pd.DataFrame()
