@@ -20,6 +20,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import BacktestChart from "../../components/BacktestChart";
+import { exportBacktestToCsv, exportBacktestTradesToCsv } from "../../utils/export";
 import {
   BacktestResult,
   BacktestTrade,
@@ -366,11 +367,16 @@ export default function BacktestPage() {
         title="回测记录"
         style={{ marginBottom: 16 }}
         extra={
-          selectedRowKeys.length > 0 && (
-            <Button danger onClick={handleBatchDelete}>
-              批量删除 ({selectedRowKeys.length})
+          <Space>
+            {selectedRowKeys.length > 0 && (
+              <Button danger onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
+            <Button onClick={() => exportBacktestToCsv(results, strategies)}>
+              导出
             </Button>
-          )
+          </Space>
         }
       >
         <Table
@@ -391,7 +397,15 @@ export default function BacktestPage() {
         <>
           <BacktestChart backtestId={selectedResult.id} />
 
-          <Card title={`交易明细 (回测 #${selectedResult.id})`} style={{ marginBottom: 16 }}>
+          <Card
+            title={`交易明细 (回测 #${selectedResult.id})`}
+            style={{ marginBottom: 16 }}
+            extra={
+              <Button onClick={() => exportBacktestTradesToCsv(trades, selectedResult.id)}>
+                导出
+              </Button>
+            }
+          >
             <Table columns={tradeColumns} dataSource={trades} rowKey={(record) => `${record.code}-${record.trade_date}-${record.side}`} size="small" pagination={{ pageSize: 20 }} />
           </Card>
         </>

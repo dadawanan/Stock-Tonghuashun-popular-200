@@ -22,6 +22,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import AccountChart from "../../components/AccountChart";
 import TradeAnalysis from "../../components/TradeAnalysis";
+import { exportOrdersToCsv, exportPositionsToCsv } from "../../utils/export";
 import {
   PendingOrder,
   quantApi,
@@ -607,6 +608,12 @@ export default function SimTradingPage() {
                 >
                   买入
                 </Button>
+                <Button
+                  size="small"
+                  onClick={() => exportPositionsToCsv(positions, selectedAccount?.account_name || "账户")}
+                >
+                  导出
+                </Button>
                 {/* <Button
                   size="small"
                   danger
@@ -691,7 +698,18 @@ export default function SimTradingPage() {
             </Card>
           )}
 
-          <Card title="交易记录" size="small">
+          <Card
+            title="交易记录"
+            size="small"
+            extra={
+              <Button
+                size="small"
+                onClick={() => exportOrdersToCsv(orders, selectedAccount?.account_name || "账户")}
+              >
+                导出
+              </Button>
+            }
+          >
             <Table
               columns={orderColumns}
               dataSource={orders}
