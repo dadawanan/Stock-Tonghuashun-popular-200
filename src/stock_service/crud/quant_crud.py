@@ -749,6 +749,14 @@ async def cancel_all_pending_orders(session: AsyncSession, account_id: int) -> i
     return count
 
 
+async def list_all_active_sim_accounts(session: AsyncSession) -> list[dict]:
+    """获取所有活跃的模拟账户（用于每日结算）"""
+    result = await session.execute(
+        select(SimAccount).where(SimAccount.status == "active")
+    )
+    return _rows_to_dicts(result.scalars().all())
+
+
 __all__ = [
     "get_stock_basic_by_code",
     "list_stock_basic",

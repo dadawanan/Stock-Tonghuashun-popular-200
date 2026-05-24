@@ -298,12 +298,52 @@ async def check_pending_orders() -> None:
         logger.error(f"[pending-orders] 检查挂单失败: {e}", exc_info=True)
 
 
+async def run_daily_settlement() -> None:
+    """对所有活跃模拟账户执行每日结算"""
+    try:
+        async with AsyncSessionFactory() as session:
+            accounts = await quant_crud.list_all_active_sim_accounts(session)
+
+            if not accounts:
+                logger.info("[settlement] 没有活跃的模拟账户")
+                return
+
+            logger.info(f"[settlement] 开始对 {len(accounts)} 个账户执行每日结算")
+
+            from stock_service.quant.application.sim_trading_engine import SimTradingEngine
+            sim_engine = SimTradingEngine(session)
+
+            today = datetime.now().date()
+            success_count = 0
+
+            for account in accounts:
+                try:
+                    triggered = await sim_engine.daily_settlement(account["id"], today)
+                    success_count += 1
+                    if triggered:
+                        logger.info(
+                            f"[settlement] 账户「{account.get('account_name', account['id'])}」"
+                            f"触发止损: {triggered}"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"[settlement] 账户 #{account['id']} 结算失败: {e}"
+                    )
+
+            await session.commit()
+            logger.info(f"[settlement] 每日结算完成: {success_count}/{len(accounts)} 成功")
+
+    except Exception as e:
+        logger.error(f"[settlement] 每日结算执行失败: {e}", exc_info=True)
+
+
 async def scheduler_loop() -> None:
     """调度器主循环"""
     # 定义触发时间
     trigger_times = [
-        time(9, 25),   # 开盘前
-        time(14, 30),  # 下午盘
+        time(9, 25),   # 开盘前 - 采集人气榜
+        time(14, 30),  # 下午盘 - 采集人气榜
+        time(15, 5),   # 收盘后 - 每日结算
     ]
 
     # 记录今天已触发的时间，避免重复执行
@@ -332,9 +372,15 @@ async def scheduler_loop() -> None:
 
                 # 检查是否到了触发时间且今天还没触发过
                 if time_key not in triggered_today and is_trading_time(trigger_time):
-                    logger.info(f"触发时间 {time_key} 到达，开始执行...")
                     triggered_today.add(time_key)
-                    await run_pipeline()
+
+                    # 15:05 执行每日结算，其他时间执行人气榜采集
+                    if trigger_time.hour == 15:
+                        logger.info(f"触发时间 {time_key} 到达，执行每日结算...")
+                        await run_daily_settlement()
+                    else:
+                        logger.info(f"触发时间 {time_key} 到达，执行人气榜采集...")
+                        await run_pipeline()
 
             # 交易时间内每60秒检查挂单
             trading, _ = is_trading_time_full()
