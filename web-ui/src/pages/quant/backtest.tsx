@@ -17,7 +17,6 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { ExclamationCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import {
@@ -89,7 +88,6 @@ export default function BacktestPage() {
 
     Modal.confirm({
       title: "确认批量删除",
-      icon: <ExclamationCircleOutlined />,
       content: `确定要删除选中的 ${selectedRowKeys.length} 条回测记录吗？此操作不可恢复。`,
       okText: "确认删除",
       okType: "danger",
