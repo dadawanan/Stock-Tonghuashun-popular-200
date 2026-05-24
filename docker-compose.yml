@@ -34,7 +34,7 @@ services:
       DB_NAME: stock_db
       DB_USER: postgresql
       DB_PASSWORD: ${DB_PASSWORD:-stock123456}
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-here}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-here}
       PYTHONPATH: /app/src
     ports:
       - "8000:8000"
