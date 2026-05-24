@@ -1,7 +1,10 @@
 /**
  * PM2 进程描述：终端退出后仍保持运行。
- * 必须使用 ecosystem.config.js（不要用 .cjs）：否则部分 PM2 版本会把文件当「普通 Node 脚本」执行，
- * 进程名变成 ecosystem.config 且不停重启，stock-api / stock-web 根本不会起来。
+ *
+ * 前端模式控制：
+ *   WEB_MODE=dev   → 开发模式（pnpm dev，热更新）
+ *   WEB_MODE=prod  → 生产模式（pnpm build + serve 静态托管）
+ *   未设置时默认 dev
  */
 const fs = require("fs");
 const path = require("path");
@@ -16,6 +19,11 @@ const inheritShellEnv = {
   PATH: process.env.PATH || "",
   HOME: process.env.HOME || "",
 };
+
+const WEB_MODE = process.env.WEB_MODE || "dev";
+const webScript = WEB_MODE === "prod"
+  ? path.join(root, "scripts", "pm2-web-prod.sh")
+  : path.join(root, "scripts", "pm2-web-dev.sh");
 
 module.exports = {
   apps: [
@@ -37,12 +45,13 @@ module.exports = {
     {
       name: "stock-web",
       cwd: webUi,
-      script: path.join(root, "scripts", "pm2-web-dev.sh"),
+      script: webScript,
       interpreter: "bash",
       env: {
         ...inheritShellEnv,
         PORT: "8001",
         HOST: "0.0.0.0",
+        WEB_MODE: WEB_MODE,
       },
       autorestart: true,
       max_restarts: 15,
@@ -63,8 +72,6 @@ module.exports = {
       max_restarts: 100,
       restart_delay: 10000,
       exp_backoff_restart_delay: 5000,
-      // 只在交易时间运行（可选）
-      // cron_restart: "25 9,30 14 * * 1-5",
     },
   ],
 };

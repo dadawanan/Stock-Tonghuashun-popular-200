@@ -50,9 +50,10 @@ for _ in 1 2 3 4 5 6 7 8; do
 done
 sleep 1
 
-echo "[start] PM2 启动 stock-api :8000 + stock-web :8001 + stock-scheduler（使用 ecosystem.config.js）"
+WEB_MODE="${WEB_MODE:-dev}"
+echo "[start] PM2 启动 stock-api :8000 + stock-web :8001 + stock-scheduler（前端模式: ${WEB_MODE}）"
 # 勿用 .cjs：若干 PM2 版本不识别为 ecosystem；勿加 -f，避免异常解析
-pm2 start "${SCRIPT_DIR}/ecosystem.config.js"
+WEB_MODE="$WEB_MODE" pm2 start "${SCRIPT_DIR}/ecosystem.config.js"
 
 sleep 1
 echo ""
@@ -89,11 +90,11 @@ fi
 
 echo ""
 echo "  API:    http://127.0.0.1:8000  （Swagger /docs）"
-echo "  前端:   http://127.0.0.1:8001"
+echo "  前端:   http://127.0.0.1:8001  （模式: ${WEB_MODE}）"
 echo ""
 echo "  定时任务: stock-scheduler（交易日 9:25 / 14:30 自动采集人气榜）"
 echo ""
 echo "  常用:   pm2 status | pm2 logs | pm2 logs stock-api"
 echo "  停止:   ./stop.sh   或   pm2 stop stock-api stock-web stock-scheduler"
-echo "  改 .env 后:  pm2 restart stock-api --update-env"
+echo "  切换模式: WEB_MODE=dev ./start.sh  或  WEB_MODE=prod ./start.sh"
 echo ""
