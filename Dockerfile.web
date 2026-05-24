@@ -7,10 +7,10 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy dependency files
-COPY web-ui/package.json web-ui/pnpm-lock.yaml web-ui/.npmrc ./
+COPY web-ui/package.json web-ui/pnpm-lock.yaml ./
 
-# Approve build scripts for dependencies that need them
-RUN pnpm install --frozen-lockfile
+# Install dependencies (ignore scripts for faster build, not critical for frontend)
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy source and build
 COPY web-ui/ .
