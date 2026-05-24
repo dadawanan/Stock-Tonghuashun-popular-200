@@ -400,7 +400,7 @@ async def list_sim_accounts(session: AsyncSession, user_id: int) -> list[dict]:
     return _rows_to_dicts(result.scalars().all())
 
 
-_SIM_ACCOUNT_ALLOWED = {"account_name", "current_capital", "total_assets", "status", "strategy_id", "config"}
+_SIM_ACCOUNT_ALLOWED = {"account_name", "current_capital", "total_assets", "status", "strategy_id", "strategy_ids", "config"}
 
 
 async def update_sim_account(session: AsyncSession, account_id: int, data: dict) -> dict | None:
@@ -510,25 +510,50 @@ async def list_feedback_logs(
 
 
 async def list_all_active_accounts_with_strategy(session: AsyncSession) -> list[dict]:
-    """获取所有配置了策略的活跃模拟账户"""
+    """获取所有配置了策略的活跃模拟账户（支持单策略和多策略）"""
+    # 获取所有活跃账户
     result = await session.execute(
-        select(
-            SimAccount,
-            Strategy.type.label("strategy_type"),
-            Strategy.params.label("strategy_params"),
-        )
-        .join(Strategy, SimAccount.strategy_id == Strategy.id)
-        .where(
-            SimAccount.status == "active",
-            Strategy.is_active == True,
-        )
+        select(SimAccount).where(SimAccount.status == "active")
     )
+    accounts = result.scalars().all()
+
     rows = []
-    for account, strategy_type, strategy_params in result.all():
+    for account in accounts:
         row = {c.name: getattr(account, c.name) for c in account.__table__.columns}
-        row["strategy_type"] = strategy_type
-        row["strategy_params"] = strategy_params
+
+        # 收集所有策略ID（支持 strategy_id 和 strategy_ids）
+        strategy_ids = []
+        if account.strategy_id:
+            strategy_ids.append(account.strategy_id)
+        if account.strategy_ids:
+            for sid in account.strategy_ids:
+                if sid not in strategy_ids:
+                    strategy_ids.append(sid)
+
+        if not strategy_ids:
+            continue
+
+        # 获取策略信息
+        strategies_result = await session.execute(
+            select(Strategy).where(
+                Strategy.id.in_(strategy_ids),
+                Strategy.is_active == True,
+            )
+        )
+        strategies = strategies_result.scalars().all()
+
+        if not strategies:
+            continue
+
+        row["strategies"] = [
+            {"id": s.id, "type": s.type, "params": s.params or {}}
+            for s in strategies
+        ]
+        # 兼容旧字段
+        row["strategy_type"] = strategies[0].type
+        row["strategy_params"] = strategies[0].params or {}
         rows.append(row)
+
     return rows
 
 

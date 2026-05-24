@@ -300,7 +300,7 @@ export const quantApi = {
 
   getSimAccount: (id: number) => http.get<SimAccount>(`/api/quant/sim/accounts/${id}`),
 
-  updateSimAccount: (id: number, data: { strategy_id?: number | null }) =>
+  updateSimAccount: (id: number, data: { strategy_id?: number | null; strategy_ids?: number[] }) =>
     http.put<SimAccount>(`/api/quant/sim/accounts/${id}`, data),
 
   deleteSimAccount: (id: number) => http.delete(`/api/quant/sim/accounts/${id}`),

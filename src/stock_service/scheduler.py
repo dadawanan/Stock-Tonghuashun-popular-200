@@ -35,6 +35,7 @@ from stock_service.quant.application.strategy_engine import (
     StrategyContext,
     TechnicalStrategy,
 )
+from stock_service.quant.domain.strategy_interface import Signal, SignalType
 
 logging.basicConfig(
     level=logging.INFO,
@@ -189,7 +190,7 @@ async def update_popularity_daily_data() -> None:
 
 
 async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
-    """对有策略的模拟账户自动执行交易"""
+    """对有策略的模拟账户自动执行交易（支持多策略共识）"""
     try:
         # 获取所有有策略的活跃账户
         accounts = await quant_crud.list_all_active_accounts_with_strategy(session)
@@ -202,14 +203,14 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
 
         for account in accounts:
             account_id = account["id"]
-            strategy_type = account.get("strategy_type")
-            strategy_params = account.get("strategy_params") or {}
             account_name = account.get("account_name", f"账户{account_id}")
+            strategies = account.get("strategies", [])
 
-            if not strategy_type:
+            if not strategies:
                 continue
 
-            logger.info(f"[auto-trade] 处理账户「{account_name}」(策略: {strategy_type})")
+            strategy_names = [s["type"] for s in strategies]
+            logger.info(f"[auto-trade] 处理账户「{account_name}」(策略: {', '.join(strategy_names)})")
 
             try:
                 # 获取最新人气榜数据
@@ -225,75 +226,120 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                     positions={},
                 )
 
-                # 运行策略生成信号
-                strategy = strategy_engine._strategies.get(strategy_type)
-                if not strategy:
-                    logger.warning(f"[auto-trade] 未找到策略: {strategy_type}")
-                    continue
-
-                strategy.set_params(strategy_params)
                 stock_codes = [entry["stock_code"] for entry in new_entries]
-                signals = await strategy.generate_signals(stock_codes, context)
 
-                if not signals:
-                    logger.info(f"[auto-trade] 账户「{account_name}」无交易信号")
+                # 运行所有策略，收集信号
+                all_signals: dict[str, dict[str, list]] = {}  # code -> {buy: [...], sell: [...]}
+
+                for strat_info in strategies:
+                    strat_type = strat_info["type"]
+                    strat_params = strat_info.get("params") or {}
+
+                    strategy = strategy_engine._strategies.get(strat_type)
+                    if not strategy:
+                        logger.warning(f"[auto-trade] 未找到策略: {strat_type}")
+                        continue
+
+                    strategy.set_params(strat_params)
+                    signals = await strategy.generate_signals(stock_codes, context)
+
+                    for signal in signals:
+                        if signal.code not in all_signals:
+                            all_signals[signal.code] = {"buy": [], "sell": []}
+                        direction = signal.signal_type.value
+                        all_signals[signal.code][direction].append(signal)
+
+                # 多策略共识：只有所有策略都同意同一方向时才执行
+                consensus_signals = []
+                for code, directions in all_signals.items():
+                    total_strategies = len(strategies)
+
+                    # 检查买入共识
+                    buy_count = len(directions["buy"])
+                    if buy_count == total_strategies:
+                        # 所有策略都发出买入信号
+                        avg_score = sum(s.score for s in directions["buy"]) / buy_count
+                        reasons = [s.reason for s in directions["buy"]]
+                        consensus_signals.append(Signal(
+                            code=code,
+                            signal_type=SignalType.BUY,
+                            score=avg_score,
+                            reason=f"多策略共识买入: {'; '.join(reasons)}",
+                        ))
+
+                    # 检查卖出共识
+                    sell_count = len(directions["sell"])
+                    if sell_count == total_strategies:
+                        avg_score = sum(s.score for s in directions["sell"]) / sell_count
+                        reasons = [s.reason for s in directions["sell"]]
+                        consensus_signals.append(Signal(
+                            code=code,
+                            signal_type=SignalType.SELL,
+                            score=avg_score,
+                            reason=f"多策略共识卖出: {'; '.join(reasons)}",
+                        ))
+
+                if not consensus_signals:
+                    logger.info(f"[auto-trade] 账户「{account_name}」无共识信号")
                     continue
 
-                logger.info(f"[auto-trade] 账户「{account_name}」生成 {len(signals)} 个信号")
+                logger.info(f"[auto-trade] 账户「{account_name}」生成 {len(consensus_signals)} 个共识信号")
 
                 # 执行交易
                 sim_engine = SimTradingEngine(session)
                 account_config = account.get("config") or {}
                 max_position_pct = account_config.get("max_position_pct", 0.2)
 
-                for signal in signals:
+                for signal in consensus_signals:
                     try:
-                        if signal.signal_type.value == "buy":
+                        if signal.signal_type == SignalType.BUY:
                             # 获取实时价格
-                            from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
-                            quote = await asyncio.to_thread(fetch_quote, signal.code)
-                            current_price = quote.get("latest_price")
+                            from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                            current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
 
                             if not current_price or current_price <= 0:
                                 logger.warning(f"[auto-trade] 无法获取 {signal.code} 的价格")
                                 continue
 
-                            # 计算买入数量：使用账户总资产的 max_position_pct 比例
+                            # 计算买入数量
                             total_assets = float(account.get("total_assets", 0))
                             max_amount = total_assets * max_position_pct * signal.score
-                            quantity = int(max_amount / current_price / 100) * 100  # 向下取整到100股
+                            quantity = int(max_amount / current_price / 100) * 100
 
                             if quantity < 100:
-                                logger.info(
-                                    f"[auto-trade] {signal.code} 计算数量不足100股，跳过"
-                                )
+                                logger.info(f"[auto-trade] {signal.code} 计算数量不足100股，跳过")
                                 continue
 
                             result = await sim_engine.buy(
-                                account_id, signal.code, quantity
+                                account_id, signal.code, quantity, current_price
                             )
                             logger.info(
                                 f"[auto-trade] 买入 {signal.code} {quantity}股 "
                                 f"@ {current_price:.2f} - {signal.reason}"
                             )
-                        elif signal.signal_type.value == "sell":
-                            # 检查是否有持仓
+
+                        elif signal.signal_type == SignalType.SELL:
                             position = await quant_crud.get_position(
                                 session, account_id, signal.code
                             )
                             if position and position.get("available_quantity", 0) > 0:
-                                result = await sim_engine.sell(
-                                    account_id, signal.code,
-                                    position["available_quantity"]
-                                )
-                                logger.info(
-                                    f"[auto-trade] 卖出 {signal.code} "
-                                    f"{position['available_quantity']}股 - {signal.reason}"
-                                )
+                                from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                                current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
+
+                                if current_price and current_price > 0:
+                                    result = await sim_engine.sell(
+                                        account_id, signal.code,
+                                        position["available_quantity"],
+                                        current_price
+                                    )
+                                    logger.info(
+                                        f"[auto-trade] 卖出 {signal.code} "
+                                        f"{position['available_quantity']}股 "
+                                        f"@ {current_price:.2f} - {signal.reason}"
+                                    )
+
                     except Exception as e:
-                        logger.error(
-                            f"[auto-trade] 交易失败 {signal.code}: {e}"
-                        )
+                        logger.error(f"[auto-trade] 交易失败 {signal.code}: {e}")
 
                 await session.commit()
 

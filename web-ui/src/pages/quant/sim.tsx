@@ -130,9 +130,12 @@ export default function SimTradingPage() {
     }
   };
 
-  const handleChangeStrategy = async (accountId: number, strategyId: number | null) => {
+  const handleChangeStrategy = async (accountId: number, strategyIds: number[]) => {
     try {
-      await quantApi.updateSimAccount(accountId, { strategy_id: strategyId });
+      await quantApi.updateSimAccount(accountId, {
+        strategy_id: strategyIds.length > 0 ? strategyIds[0] : null,
+        strategy_ids: strategyIds,
+      });
       message.success("策略已更新");
       loadAccounts();
     } catch (e: any) {
@@ -539,21 +542,27 @@ export default function SimTradingPage() {
                 {
                   title: "策略",
                   dataIndex: "strategy_id",
-                  width: 140,
-                  render: (id: number | null, record: SimAccount) => (
-                    <Select
-                      size="small"
-                      allowClear
-                      placeholder="未绑定"
-                      value={id || undefined}
-                      style={{ width: "100%" }}
-                      onChange={(value) => handleChangeStrategy(record.id, value || null)}
-                      options={strategies.map((s) => ({
-                        value: s.id,
-                        label: s.name,
-                      }))}
-                    />
-                  ),
+                  width: 200,
+                  render: (id: number | null, record: any) => {
+                    // 支持 strategy_ids (多策略) 和 strategy_id (单策略)
+                    const selectedIds: number[] = record.strategy_ids || (id ? [id] : []);
+                    return (
+                      <Select
+                        size="small"
+                        mode="multiple"
+                        allowClear
+                        placeholder="未绑定"
+                        value={selectedIds}
+                        style={{ width: "100%" }}
+                        onChange={(values) => handleChangeStrategy(record.id, values)}
+                        options={strategies.map((s) => ({
+                          value: s.id,
+                          label: s.name,
+                        }))}
+                        maxTagCount={2}
+                      />
+                    );
+                  },
                 },
                 {
                   title: "总资产",

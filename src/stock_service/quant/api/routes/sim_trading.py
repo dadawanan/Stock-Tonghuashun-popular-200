@@ -73,13 +73,13 @@ async def update_account(
     session: AsyncSession = Depends(get_session),
     current_user = Depends(get_current_user),
 ):
-    """Update sim account (e.g., strategy_id)"""
+    """Update sim account (e.g., strategy_id, strategy_ids)"""
     engine = SimTradingEngine(session)
     if not await engine.verify_ownership(current_user.id, account_id):
         raise HTTPException(403, "Not your account")
 
     # Only allow updating certain fields
-    allowed = {"strategy_id", "account_name"}
+    allowed = {"strategy_id", "strategy_ids", "account_name"}
     update_data = {k: v for k, v in data.items() if k in allowed}
     if not update_data:
         raise HTTPException(400, "No valid fields to update")
