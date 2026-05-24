@@ -256,6 +256,28 @@ CREATE TABLE IF NOT EXISTS feedback_log (
 );
 
 -- ------------------------------------------------------------
+-- M. 挂单表
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pending_order (
+    id              BIGSERIAL PRIMARY KEY,
+    account_id      BIGINT NOT NULL REFERENCES sim_account(id),
+    code            VARCHAR(16) NOT NULL,
+    side            VARCHAR(8) NOT NULL,   -- buy/sell
+    target_price    NUMERIC(18, 4) NOT NULL,
+    quantity        INTEGER NOT NULL,
+    status          VARCHAR(16) DEFAULT 'pending',  -- pending/filled/cancelled/expired
+    note            TEXT,
+    filled_at       TIMESTAMPTZ,
+    filled_price    NUMERIC(18, 4),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_order_account ON pending_order (account_id, status);
+CREATE INDEX IF NOT EXISTS idx_pending_order_status ON pending_order (status);
+
+COMMENT ON TABLE pending_order IS '挂单表（限价单）';
+
+-- ------------------------------------------------------------
 -- 扩展现有表
 -- ------------------------------------------------------------
 ALTER TABLE trade_order ADD COLUMN IF NOT EXISTS strategy_id BIGINT;

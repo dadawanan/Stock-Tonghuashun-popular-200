@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Popconfirm,
   Form,
   Input,
   InputNumber,
@@ -20,6 +21,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import {
+  PendingOrder,
   quantApi,
   SimAccount,
   Position,
@@ -31,19 +33,26 @@ const { Title, Text } = Typography;
 
 export default function SimTradingPage() {
   const [accounts, setAccounts] = useState<SimAccount[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<SimAccount | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<SimAccount | null>(
+    null,
+  );
   const [positions, setPositions] = useState<Position[]>([]);
   const [orders, setOrders] = useState<TradeOrder[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedAccountKeys, setSelectedAccountKeys] = useState<React.Key[]>([]);
+  const [selectedAccountKeys, setSelectedAccountKeys] = useState<React.Key[]>(
+    [],
+  );
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [pendingOrderModalOpen, setPendingOrderModalOpen] = useState(false);
   const [sellPosition, setSellPosition] = useState<Position | null>(null);
   const [createForm] = Form.useForm();
   const [tradeForm] = Form.useForm();
   const [sellForm] = Form.useForm();
+  const [pendingOrderForm] = Form.useForm();
 
   useEffect(() => {
     loadAccounts();
@@ -75,12 +84,14 @@ export default function SimTradingPage() {
   const selectAccount = async (account: SimAccount) => {
     setSelectedAccount(account);
     try {
-      const [posData, orderData] = await Promise.all([
+      const [posData, orderData, pendingData] = await Promise.all([
         quantApi.getPositions(account.id),
         quantApi.getOrders(account.id),
+        quantApi.listPendingOrders(account.id),
       ]);
       setPositions(Array.isArray(posData) ? posData : []);
       setOrders(Array.isArray(orderData) ? orderData : []);
+      setPendingOrders(Array.isArray(pendingData) ? pendingData : []);
     } catch {
       message.error("加载账户详情失败");
     }
@@ -218,6 +229,50 @@ export default function SimTradingPage() {
     }
   };
 
+  const handleCreatePendingOrder = async () => {
+    if (!selectedAccount) return;
+    try {
+      const values = await pendingOrderForm.validateFields();
+      await quantApi.createPendingOrder({
+        account_id: selectedAccount.id,
+        code: values.code,
+        side: values.side,
+        target_price: values.target_price,
+        quantity: values.quantity,
+        note: values.note,
+      });
+      message.success("挂单创建成功");
+      setPendingOrderModalOpen(false);
+      pendingOrderForm.resetFields();
+      selectAccount(selectedAccount);
+    } catch (e: any) {
+      message.error(e?.message || "创建挂单失败");
+    }
+  };
+
+  const handleCancelPendingOrder = async (orderId: number) => {
+    try {
+      await quantApi.cancelPendingOrder(orderId);
+      message.success("挂单已取消");
+      if (selectedAccount) {
+        selectAccount(selectedAccount);
+      }
+    } catch (e: any) {
+      message.error(e?.message || "取消失败");
+    }
+  };
+
+  const handleCancelAllPendingOrders = async () => {
+    if (!selectedAccount) return;
+    try {
+      const result = await quantApi.cancelAllPendingOrders(selectedAccount.id);
+      message.success(`已取消 ${result.cancelled} 个挂单`);
+      selectAccount(selectedAccount);
+    } catch (e: any) {
+      message.error(e?.message || "取消失败");
+    }
+  };
+
   const positionColumns: ColumnsType<Position> = [
     { title: "股票代码", dataIndex: "code", width: 110 },
     { title: "股票名称", dataIndex: "stock_name", width: 100 },
@@ -236,7 +291,9 @@ export default function SimTradingPage() {
         <Button
           size="small"
           danger
-          disabled={!record.available_quantity || record.available_quantity <= 0}
+          disabled={
+            !record.available_quantity || record.available_quantity <= 0
+          }
           onClick={() => handleOpenSellModal(record)}
         >
           卖出
@@ -281,11 +338,21 @@ export default function SimTradingPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 16,
+        }}
+      >
         <Title level={3}>模拟盘</Title>
         <Space>
           <Button onClick={() => setCreateModalOpen(true)}>新建账户</Button>
-          <Button type="primary" onClick={() => setTradeModalOpen(true)} disabled={!selectedAccount}>
+          <Button
+            type="primary"
+            onClick={() => setTradeModalOpen(true)}
+            disabled={!selectedAccount}
+          >
             下单
           </Button>
           <Button onClick={handleSettlement} disabled={!selectedAccount}>
@@ -298,7 +365,10 @@ export default function SimTradingPage() {
         <Row gutter={16} style={{ marginBottom: 16 }}>
           <Col span={6}>
             <Card>
-              <Statistic title="账户名称" value={selectedAccount.account_name} />
+              <Statistic
+                title="账户名称"
+                value={selectedAccount.account_name}
+              />
             </Card>
           </Col>
           <Col span={6}>
@@ -325,13 +395,17 @@ export default function SimTradingPage() {
             <Card>
               <Statistic
                 title="盈亏"
-                value={parseFloat(selectedAccount.total_assets) - parseFloat(selectedAccount.initial_capital)}
+                value={
+                  parseFloat(selectedAccount.total_assets) -
+                  parseFloat(selectedAccount.initial_capital)
+                }
                 precision={2}
                 prefix="¥"
                 styles={{
                   content: {
                     color:
-                      parseFloat(selectedAccount.total_assets) >= parseFloat(selectedAccount.initial_capital)
+                      parseFloat(selectedAccount.total_assets) >=
+                      parseFloat(selectedAccount.initial_capital)
                         ? "#3f8600"
                         : "#cf1322",
                   },
@@ -363,7 +437,8 @@ export default function SimTradingPage() {
                   dataIndex: "strategy_id",
                   width: 100,
                   render: (id: number | null) => {
-                    if (!id) return <span style={{ color: "#999" }}>未绑定</span>;
+                    if (!id)
+                      return <span style={{ color: "#999" }}>未绑定</span>;
                     const s = strategies.find((s) => s.id === id);
                     return s ? <Tag>{s.name}</Tag> : `#${id}`;
                   },
@@ -410,7 +485,8 @@ export default function SimTradingPage() {
                 onClick: () => selectAccount(record),
                 style: {
                   cursor: "pointer",
-                  background: selectedAccount?.id === record.id ? "#e6f7ff" : undefined,
+                  background:
+                    selectedAccount?.id === record.id ? "#e6f7ff" : undefined,
                 },
               })}
             />
@@ -418,12 +494,94 @@ export default function SimTradingPage() {
         </Col>
 
         <Col span={16}>
-          <Card title="持仓" size="small" style={{ marginBottom: 16 }}>
-            <Table columns={positionColumns} dataSource={positions} rowKey="id" size="small" pagination={false} />
+          <Card
+            title="持仓"
+            size="small"
+            style={{ marginBottom: 16 }}
+            extra={
+              <Button size="small" onClick={() => setPendingOrderModalOpen(true)}>
+                挂单
+              </Button>
+            }
+          >
+            <Table
+              columns={positionColumns}
+              dataSource={positions}
+              rowKey="id"
+              size="small"
+              pagination={false}
+            />
           </Card>
 
+          {pendingOrders.length > 0 && (
+            <Card
+              title="挂单列表"
+              size="small"
+              style={{ marginBottom: 16 }}
+              extra={
+                <Popconfirm
+                  title="确定取消所有挂单？"
+                  onConfirm={handleCancelAllPendingOrders}
+                >
+                  <Button size="small" danger>
+                    全部取消
+                  </Button>
+                </Popconfirm>
+              }
+            >
+              <Table
+                columns={[
+                  { title: "股票代码", dataIndex: "code", width: 100 },
+                  { title: "股票名称", dataIndex: "stock_name", width: 90 },
+                  {
+                    title: "方向",
+                    dataIndex: "side",
+                    width: 60,
+                    render: (side: string) => (
+                      <Tag color={side === "buy" ? "green" : "red"}>
+                        {side === "buy" ? "买入" : "卖出"}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    title: "目标价",
+                    dataIndex: "target_price",
+                    width: 80,
+                    render: (v: string) => parseFloat(v).toFixed(2),
+                  },
+                  { title: "数量", dataIndex: "quantity", width: 80 },
+                  { title: "备注", dataIndex: "note", ellipsis: true },
+                  {
+                    title: "操作",
+                    width: 70,
+                    render: (_, record) => (
+                      <Popconfirm
+                        title="确定取消此挂单？"
+                        onConfirm={() => handleCancelPendingOrder(record.id)}
+                      >
+                        <Button size="small" danger>
+                          取消
+                        </Button>
+                      </Popconfirm>
+                    ),
+                  },
+                ]}
+                dataSource={pendingOrders}
+                rowKey="id"
+                size="small"
+                pagination={false}
+              />
+            </Card>
+          )}
+
           <Card title="交易记录" size="small">
-            <Table columns={orderColumns} dataSource={orders} rowKey="id" size="small" pagination={{ pageSize: 10 }} />
+            <Table
+              columns={orderColumns}
+              dataSource={orders}
+              rowKey="id"
+              size="small"
+              pagination={{ pageSize: 10 }}
+            />
           </Card>
         </Col>
       </Row>
@@ -436,10 +594,18 @@ export default function SimTradingPage() {
         onCancel={() => setCreateModalOpen(false)}
       >
         <Form form={createForm} layout="vertical">
-          <Form.Item name="account_name" label="账户名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="account_name"
+            label="账户名称"
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="initial_capital" label="初始资金" initialValue={1000000}>
+          <Form.Item
+            name="initial_capital"
+            label="初始资金"
+            initialValue={1000000}
+          >
             <InputNumber min={10000} step={100000} style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="strategy_id" label="绑定策略（可选）">
@@ -481,7 +647,8 @@ export default function SimTradingPage() {
             <InputNumber min={100} step={100} style={{ width: "100%" }} />
           </Form.Item>
           <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
-            * 价格为实时行情价，仅在交易时间（周一至周五 9:30-11:30, 13:00-15:00）可下单
+            * 价格为实时行情价，仅在交易时间（周一至周五 9:30-11:30,
+            13:00-15:00）可下单
           </div>
         </Form>
       </Modal>
@@ -500,11 +667,16 @@ export default function SimTradingPage() {
           {sellPosition && (
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary">
-                {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 | 可卖 {sellPosition.available_quantity} 股
+                {sellPosition.stock_name} | 持仓 {sellPosition.quantity} 股 |
+                可卖 {sellPosition.available_quantity} 股
               </Text>
             </div>
           )}
-          <Form.Item name="quantity" label="卖出数量" rules={[{ required: true }]}>
+          <Form.Item
+            name="quantity"
+            label="卖出数量"
+            rules={[{ required: true }]}
+          >
             <InputNumber
               min={100}
               max={sellPosition?.available_quantity || 0}
@@ -513,10 +685,65 @@ export default function SimTradingPage() {
             />
           </Form.Item>
           <Form.Item name="price" label="价格（留空使用实时价）">
-            <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} placeholder="实时行情价" />
+            <InputNumber
+              min={0.01}
+              step={0.01}
+              style={{ width: "100%" }}
+              placeholder="实时行情价"
+            />
           </Form.Item>
           <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
             * 交易时间内使用实时行情价，非交易时间可手动输入价格
+          </div>
+        </Form>
+      </Modal>
+
+      {/* Pending Order Modal */}
+      <Modal
+        title="创建挂单"
+        open={pendingOrderModalOpen}
+        onOk={handleCreatePendingOrder}
+        onCancel={() => setPendingOrderModalOpen(false)}
+      >
+        <Form form={pendingOrderForm} layout="vertical">
+          <Form.Item name="code" label="股票代码" rules={[{ required: true }]}>
+            <Input placeholder="000725.SZ" />
+          </Form.Item>
+          <Form.Item name="side" label="方向" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: "buy", label: "买入" },
+                { value: "sell", label: "卖出" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="target_price"
+            label="目标价格"
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={0.01} step={0.01} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="quantity"
+            label="数量"
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={100} step={100} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="note" label="备注">
+            <Input placeholder="可选" />
+          </Form.Item>
+          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
+            <div>
+              <Text strong>买入单：</Text>当股价{" "}
+              <Text type="success">低于</Text> 目标价时自动成交
+            </div>
+            <div>
+              <Text strong>卖出单：</Text>当股价{" "}
+              <Text type="danger">高于</Text> 目标价时自动成交
+            </div>
+            <div>系统每分钟检查一次价格</div>
           </div>
         </Form>
       </Modal>

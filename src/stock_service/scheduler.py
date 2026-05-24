@@ -64,6 +64,25 @@ def is_trading_time(target_time: time) -> bool:
     return abs(now_minutes - target_minutes) <= 2
 
 
+def is_trading_time_full() -> tuple[bool, str]:
+    """检查当前是否在交易时间内（完整交易时段）"""
+    now = datetime.now()
+
+    if now.weekday() >= 5:
+        return False, "周末"
+
+    current_time = now.time()
+
+    # 上午盘：9:30 - 11:30
+    if time(9, 30) <= current_time <= time(11, 30):
+        return True, "上午盘"
+    # 下午盘：13:00 - 15:00
+    elif time(13, 0) <= current_time <= time(15, 0):
+        return True, "下午盘"
+    else:
+        return False, "非交易时间"
+
+
 async def run_pipeline() -> None:
     """执行完整的人气榜流水线"""
     logger.info("开始执行人气榜流水线...")
@@ -213,6 +232,72 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
         logger.error(f"[auto-trade] 自动交易执行失败: {e}", exc_info=True)
 
 
+async def check_pending_orders() -> None:
+    """检查挂单是否可以成交"""
+    try:
+        async with AsyncSessionFactory() as session:
+            pending_orders = await quant_crud.list_all_pending_orders(session)
+
+            if not pending_orders:
+                return
+
+            logger.info(f"[pending-orders] 检查 {len(pending_orders)} 个挂单")
+
+            for order in pending_orders:
+                try:
+                    # 获取实时价格
+                    from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
+                    quote = await asyncio.to_thread(fetch_quote, order["code"])
+                    current_price = quote.get("latest_price")
+
+                    if not current_price or current_price <= 0:
+                        continue
+
+                    # 判断是否成交
+                    from stock_service.quant.domain.pending_order import should_fill_order
+                    if should_fill_order(order, current_price):
+                        # 执行成交
+                        sim_engine = SimTradingEngine(session)
+
+                        if order["side"] == "buy":
+                            await sim_engine.buy(
+                                order["account_id"],
+                                order["code"],
+                                order["quantity"],
+                                current_price,
+                            )
+                        elif order["side"] == "sell":
+                            await sim_engine.sell(
+                                order["account_id"],
+                                order["code"],
+                                order["quantity"],
+                                current_price,
+                            )
+
+                        # 更新挂单状态
+                        await quant_crud.update_pending_order(session, order["id"], {
+                            "status": "filled",
+                            "filled_at": datetime.now(),
+                            "filled_price": current_price,
+                        })
+
+                        logger.info(
+                            f"[pending-orders] 挂单成交: {order['side']} {order['code']} "
+                            f"{order['quantity']}股 @ {current_price:.2f} "
+                            f"(目标价: {float(order['target_price']):.2f})"
+                        )
+
+                        await session.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"[pending-orders] 处理挂单失败 #{order['id']}: {e}"
+                    )
+
+    except Exception as e:
+        logger.error(f"[pending-orders] 检查挂单失败: {e}", exc_info=True)
+
+
 async def scheduler_loop() -> None:
     """调度器主循环"""
     # 定义触发时间
@@ -224,10 +309,12 @@ async def scheduler_loop() -> None:
     # 记录今天已触发的时间，避免重复执行
     triggered_today: set[str] = set()
     current_date = datetime.now().date()
+    last_pending_check = datetime.now()
 
     logger.info("调度器已启动")
     logger.info(f"触发时间: {', '.join(t.strftime('%H:%M') for t in trigger_times)}")
     logger.info("仅在交易日（周一至周五）执行")
+    logger.info("挂单检查: 交易时间内每60秒检查一次")
 
     while True:
         now = datetime.now()
@@ -249,8 +336,14 @@ async def scheduler_loop() -> None:
                     triggered_today.add(time_key)
                     await run_pipeline()
 
-        # 每30秒检查一次
-        await asyncio.sleep(30)
+            # 交易时间内每60秒检查挂单
+            trading, _ = is_trading_time_full()
+            if trading and (now - last_pending_check).total_seconds() >= 60:
+                last_pending_check = now
+                await check_pending_orders()
+
+        # 每10秒检查一次
+        await asyncio.sleep(10)
 
 
 def handle_signal(signum, frame):

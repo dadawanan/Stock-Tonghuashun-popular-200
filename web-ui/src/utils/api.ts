@@ -219,6 +219,21 @@ export interface TradeOrder {
   created_at: string;
 }
 
+export interface PendingOrder {
+  id: number;
+  account_id: number;
+  code: string;
+  stock_name?: string | null;
+  side: string;
+  target_price: string;
+  quantity: number;
+  status: string;
+  note?: string | null;
+  filled_at?: string | null;
+  filled_price?: string | null;
+  created_at: string;
+}
+
 export interface FeedbackInsight {
   overall: {
     win_rate: number | null;
@@ -300,6 +315,31 @@ export const quantApi = {
     http.post<{ stop_loss_triggered: string[] }>(
       `/api/quant/sim/settlement?account_id=${accountId}&trade_date=${tradeDate}`
     ),
+
+  // Pending Orders
+  listPendingOrders: (accountId: number, status?: string) =>
+    http.get<PendingOrder[]>(`/api/quant/pending-orders/`, {
+      params: { account_id: accountId, status: status || "pending" },
+    }),
+
+  createPendingOrder: (data: {
+    account_id: number;
+    code: string;
+    side: 'buy' | 'sell';
+    target_price: number;
+    quantity: number;
+    note?: string;
+  }) => http.post<PendingOrder>('/api/quant/pending-orders/', null, {
+    params: data,
+  }),
+
+  cancelPendingOrder: (orderId: number) =>
+    http.delete(`/api/quant/pending-orders/${orderId}`),
+
+  cancelAllPendingOrders: (accountId: number) =>
+    http.post<{ cancelled: number }>(`/api/quant/pending-orders/cancel-all`, null, {
+      params: { account_id: accountId },
+    }),
 
   // Feedback
   getInsights: (backtestId: number) =>

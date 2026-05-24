@@ -9,6 +9,7 @@ from stock_service.db.models.quant_models import (
     BacktestResult,
     BacktestTrade,
     FeedbackLog,
+    PendingOrder,
     PositionAccount,
     PositionDailySnapshot,
     SimAccount,
@@ -641,6 +642,111 @@ async def get_latest_stock_analysis(
     if not row:
         return None
     return _rows_to_dicts([row])[0]
+
+
+# ── PendingOrder ──
+
+
+async def create_pending_order(session: AsyncSession, data: dict) -> dict:
+    """创建挂单"""
+    order = PendingOrder(**data)
+    session.add(order)
+    await session.flush()
+    return _rows_to_dicts([order])[0]
+
+
+async def get_pending_order(session: AsyncSession, order_id: int) -> dict | None:
+    """获取挂单"""
+    result = await session.execute(
+        select(PendingOrder, StockMaster.stock_name)
+        .outerjoin(StockMaster, PendingOrder.code == StockMaster.stock_code)
+        .where(PendingOrder.id == order_id)
+    )
+    row = result.first()
+    if not row:
+        return None
+    order, stock_name = row
+    d = {c.name: getattr(order, c.name) for c in order.__table__.columns}
+    d["stock_name"] = stock_name
+    return d
+
+
+async def list_pending_orders(
+    session: AsyncSession, account_id: int, status: str | None = "pending"
+) -> list[dict]:
+    """获取账户的挂单列表"""
+    stmt = (
+        select(PendingOrder, StockMaster.stock_name)
+        .outerjoin(StockMaster, PendingOrder.code == StockMaster.stock_code)
+        .where(PendingOrder.account_id == account_id)
+    )
+    if status:
+        stmt = stmt.where(PendingOrder.status == status)
+    stmt = stmt.order_by(PendingOrder.created_at.desc())
+
+    result = await session.execute(stmt)
+    rows = []
+    for order, stock_name in result.all():
+        d = {c.name: getattr(order, c.name) for c in order.__table__.columns}
+        d["stock_name"] = stock_name
+        rows.append(d)
+    return rows
+
+
+async def list_all_pending_orders(session: AsyncSession) -> list[dict]:
+    """获取所有待处理的挂单（用于定时检查）"""
+    result = await session.execute(
+        select(PendingOrder, StockMaster.stock_name)
+        .outerjoin(StockMaster, PendingOrder.code == StockMaster.stock_code)
+        .where(PendingOrder.status == "pending")
+        .order_by(PendingOrder.created_at)
+    )
+    rows = []
+    for order, stock_name in result.all():
+        d = {c.name: getattr(order, c.name) for c in order.__table__.columns}
+        d["stock_name"] = stock_name
+        rows.append(d)
+    return rows
+
+
+async def update_pending_order(
+    session: AsyncSession, order_id: int, data: dict
+) -> dict | None:
+    """更新挂单"""
+    order = await session.get(PendingOrder, order_id)
+    if not order:
+        return None
+    for key, value in data.items():
+        if key in {"status", "filled_at", "filled_price", "note"}:
+            setattr(order, key, value)
+    await session.flush()
+    return _rows_to_dicts([order])[0]
+
+
+async def cancel_pending_order(session: AsyncSession, order_id: int) -> bool:
+    """取消挂单"""
+    order = await session.get(PendingOrder, order_id)
+    if not order or order.status != "pending":
+        return False
+    order.status = "cancelled"
+    await session.flush()
+    return True
+
+
+async def cancel_all_pending_orders(session: AsyncSession, account_id: int) -> int:
+    """取消账户所有挂单"""
+    result = await session.execute(
+        select(PendingOrder).where(
+            PendingOrder.account_id == account_id,
+            PendingOrder.status == "pending",
+        )
+    )
+    count = 0
+    for order in result.scalars().all():
+        order.status = "cancelled"
+        count += 1
+    await session.flush()
+    return count
 
 
 __all__ = [

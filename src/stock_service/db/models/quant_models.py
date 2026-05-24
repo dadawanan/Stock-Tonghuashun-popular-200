@@ -255,6 +255,27 @@ class FeedbackLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
 
+class PendingOrder(Base):
+    __tablename__ = "pending_order"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    code: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    side: Mapped[str] = mapped_column(VARCHAR(8), nullable=False)
+    target_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(VARCHAR(16), default="pending")
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    filled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    filled_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        _Index("idx_pending_order_account", "account_id", "status"),
+        _Index("idx_pending_order_status", "status"),
+    )
+
+
 __all__ = [
     "StockBasic",
     "StockDaily",
@@ -269,4 +290,5 @@ __all__ = [
     "SimAccount",
     "PositionDailySnapshot",
     "FeedbackLog",
+    "PendingOrder",
 ]
