@@ -60,6 +60,70 @@ def build_stock_rows(stocks_df: pd.DataFrame) -> list[dict[str, Any]]:
     ]
 
 
+def _popularity_signature_from_rows(rows: list[dict[str, Any]]) -> tuple[tuple[str, int | None], ...]:
+    pairs = []
+    for row in rows:
+        pairs.append(
+            (
+                normalize_stock_code(row["stock_code"]),
+                int(row["popularity_rank"]) if row.get("popularity_rank") is not None else None,
+            )
+        )
+    return tuple(sorted(pairs))
+
+
+def _popularity_signature_from_frame(stocks_df: pd.DataFrame) -> tuple[tuple[str, int | None], ...]:
+    pairs = []
+    for _, row in stocks_df.iterrows():
+        pairs.append(
+            (
+                normalize_stock_code(row["stock_code"]),
+                int(row["popularity_rank"]) if pd.notna(row.get("popularity_rank")) else None,
+            )
+        )
+    return tuple(sorted(pairs))
+
+
+async def find_latest_distinct_snapshot_rows(
+    session: AsyncSession,
+    *,
+    current_signature: tuple[tuple[str, int | None], ...] | None = None,
+    search_limit: int = 10,
+) -> list[dict[str, Any]]:
+    snapshot_times = await v2_crud.get_latest_popularity_snapshot_times(session, limit=search_limit)
+    for snapshot_time in snapshot_times:
+        rows = await v2_crud.get_popularity_snapshot_by_time(session, snapshot_time)
+        if not rows:
+            continue
+        if current_signature is not None and _popularity_signature_from_rows(rows) == current_signature:
+            continue
+        return rows
+    return []
+
+
+async def get_latest_distinct_snapshots(
+    session: AsyncSession,
+    *,
+    limit: int = 2,
+    search_limit: int = 10,
+) -> list[tuple[object, list[dict[str, Any]]]]:
+    snapshot_times = await v2_crud.get_latest_popularity_snapshot_times(session, limit=search_limit)
+    snapshots: list[tuple[object, list[dict[str, Any]]]] = []
+    seen_signatures: set[tuple[tuple[str, int | None], ...]] = set()
+    for snapshot_time in snapshot_times:
+        rows = await v2_crud.get_popularity_snapshot_by_time(session, snapshot_time)
+        if not rows:
+            continue
+        signature = _popularity_signature_from_rows(rows)
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        snapshots.append((snapshot_time, rows))
+        if len(snapshots) >= limit:
+            break
+    return snapshots
+
+
 def compare_stock_sets(previous_rows: list[dict[str, Any]], current_rows: list[dict[str, Any]]) -> dict[str, Any]:
     previous_map = {normalize_stock_code(row["stock_code"]): row for row in previous_rows}
     current_map = {normalize_stock_code(row["stock_code"]): row for row in current_rows}
@@ -122,8 +186,11 @@ async def run_popularity_pipeline(session: AsyncSession) -> dict[str, Any]:
         raise ValueError("未获取到同花顺人气前200数据")
     now = pd.Timestamp.now(tz="Asia/Shanghai")
     trade_date = now.date()
-    previous_times = await v2_crud.get_latest_popularity_snapshot_times(session, limit=1)
-    previous_rows = await v2_crud.get_popularity_snapshot_by_time(session, previous_times[0]) if previous_times else []
+    current_signature = _popularity_signature_from_frame(stocks_df)
+    previous_rows = await find_latest_distinct_snapshot_rows(
+        session,
+        current_signature=current_signature,
+    )
     run_id = await v2_crud.create_pipeline_run(session, run_type="fetch", source="ths_pywencai", trade_date=trade_date, snapshot_time=now.to_pydatetime())
     stock_rows = build_stock_rows(stocks_df)
     stock_count = await v2_crud.upsert_stocks(session, stock_rows)
