@@ -565,7 +565,7 @@ async def get_latest_popularity_data(session: AsyncSession) -> dict[str, dict]:
     sub = select(func.max(PopularitySnapshot.snapshot_time)).scalar_subquery()
     result = await session.execute(
         select(PopularitySnapshot, StockMaster.stock_code)
-        .join(StockMaster, PopularitySnapshot.stock_id == StockMaster.id)
+        .join(StockMaster, PopularitySnapshot.stock_code == StockMaster.stock_code)
         .where(PopularitySnapshot.snapshot_time == sub)
         .order_by(PopularitySnapshot.popularity_rank)
     )

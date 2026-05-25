@@ -179,6 +179,7 @@ export interface BacktestTrade {
 export interface BacktestNav {
   trade_date: string;
   nav: number | null;
+  benchmark_nav?: number | null;
   total_assets: number | null;
   cash: number | null;
   position_value: number | null;

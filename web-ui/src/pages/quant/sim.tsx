@@ -823,7 +823,7 @@ export default function SimTradingPage() {
               min={100}
               max={
                 tradeForm.getFieldValue("side") === "sell"
-                  ? sellPosition?.available_quantity
+                  ? sellPosition?.available_quantity ?? undefined
                   : undefined
               }
               step={100}

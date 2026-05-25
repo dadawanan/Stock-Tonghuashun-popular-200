@@ -237,7 +237,8 @@ export default function HomePage() {
           value: "利空",
         },
       ],
-      onFilter: (value, record) => record.text_event_label.includes(value),
+      onFilter: (value, record) =>
+        record.text_event_label.includes(String(value)),
     },
 
     {

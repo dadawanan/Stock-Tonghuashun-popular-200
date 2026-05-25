@@ -5,4 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT/web-ui"
 export PORT="${PORT:-8001}"
 export HOST="${HOST:-0.0.0.0}"
+# 先补齐 Umi 临时产物，降低 PM2 重启时 `.umi` 目录尚未生成导致的编译失败概率。
+pnpm run setup
 exec pnpm run dev
