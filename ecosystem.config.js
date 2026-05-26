@@ -21,9 +21,10 @@ const inheritShellEnv = {
 };
 
 const WEB_MODE = process.env.WEB_MODE || "dev";
-const webScript = WEB_MODE === "prod"
-  ? path.join(root, "scripts", "pm2-web-prod.sh")
-  : path.join(root, "scripts", "pm2-web-dev.sh");
+const webScript =
+  WEB_MODE === "prod"
+    ? path.join(root, "scripts", "pm2-web-prod.sh")
+    : path.join(root, "scripts", "pm2-web-dev.sh");
 
 module.exports = {
   apps: [
@@ -54,7 +55,7 @@ module.exports = {
         WEB_MODE: WEB_MODE,
         // 生产模式下配置 API 地址（默认空，使用相对路径 /api）
         // 如果前后端不在同一域名，可设置：API_BASE_URL=http://your-api-domain:8000
-        API_BASE_URL: process.env.API_BASE_URL || "",
+        API_BASE_URL: process.env.API_BASE_URL || "localhost:8000",
       },
       autorestart: true,
       max_restarts: 15,

@@ -25,6 +25,6 @@ export default defineConfig({
   },
   // 定义运行时配置，用于注入 API 地址
   define: {
-    'process.env.API_BASE_URL': process.env.API_BASE_URL || '',
+    'process.env.API_BASE_URL': process.env.API_BASE_URL || 'localhost:8000',
   },
 });

@@ -8,7 +8,7 @@ import {
 } from "./auth-storage";
 
 // 使用编译时注入的环境变量，生产环境可通过 API_BASE_URL 环境变量配置
-const BASE_URL = (typeof process !== 'undefined' && process.env.API_BASE_URL) || '';
+const BASE_URL = (typeof process !== 'undefined' && process.env.API_BASE_URL) || 'localhost:8000';
 
 interface ApiEnvelope<T = unknown> {
   code: number;
