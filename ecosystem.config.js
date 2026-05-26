@@ -52,6 +52,9 @@ module.exports = {
         PORT: "8001",
         HOST: "0.0.0.0",
         WEB_MODE: WEB_MODE,
+        // 生产模式下配置 API 地址（默认空，使用相对路径 /api）
+        // 如果前后端不在同一域名，可设置：API_BASE_URL=http://your-api-domain:8000
+        API_BASE_URL: process.env.API_BASE_URL || "",
       },
       autorestart: true,
       max_restarts: 15,
