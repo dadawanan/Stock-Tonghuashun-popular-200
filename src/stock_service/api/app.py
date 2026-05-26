@@ -20,7 +20,7 @@ logger = logging.getLogger("stock-api")
 
 # 从环境变量读取允许的前端域名，支持多个域名（逗号分隔）
 # 示例: ALLOWED_ORIGINS=http://localhost:8001,http://101.35.255.200:8001
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8001")
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8001,http://101.35.255.200:8001")
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
 
 logger.info(f"允许的前端域名: {allowed_origins}")
