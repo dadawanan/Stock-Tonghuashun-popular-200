@@ -94,7 +94,7 @@ class Settings:
     jwt_refresh_cookie_name = _get_required_env("JWT_REFRESH_COOKIE_NAME", "stock_refresh_token")
     cookie_secure = _get_bool_env("COOKIE_SECURE", "false")
     cookie_samesite = _get_samesite_env("COOKIE_SAMESITE", "lax")
-    market_quote_providers = _get_csv_env("MARKET_QUOTE_PROVIDERS", "mootdx,tencent,eastmoney")
+    market_quote_providers = _get_csv_env("MARKET_QUOTE_PROVIDERS", "tencent")
     market_fetch_concurrency = _get_int_env("MARKET_FETCH_CONCURRENCY", "5")
     news_fetch_concurrency = _get_int_env("NEWS_FETCH_CONCURRENCY", "5")
 

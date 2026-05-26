@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import akshare as ak
+import pandas as pd
 import requests
 
 from stock_service.infrastructure.providers.stock_code import (
@@ -90,6 +92,26 @@ def fetch_quote(stock_code: str) -> dict[str, Any]:
     return quote
 
 
+def fetch_realtime_price(stock_code: str) -> float | None:
+    quote = fetch_quote(stock_code)
+    return quote.get("latest_price")
+
+
+def fetch_realtime_quote(stock_code: str) -> dict[str, Any]:
+    quote = fetch_quote(stock_code)
+    return {
+        "code": quote["stock_code"],
+        "name": quote.get("stock_name"),
+        "open": quote.get("open_price"),
+        "prev_close": quote.get("prev_close"),
+        "price": quote.get("latest_price"),
+        "high": quote.get("high_price"),
+        "low": quote.get("low_price"),
+        "volume": None,
+        "amount": quote.get("amount"),
+    }
+
+
 def fetch_index_pct_change(symbol: str) -> float:
     response = requests.get(
         TENCENT_QUOTE_URL + symbol,
@@ -133,11 +155,51 @@ def fetch_quote_metrics(stock_code: str) -> dict[str, Any]:
     }
 
 
+def fetch_kline_tx(code: str, start: str, end: str) -> pd.DataFrame:
+    normalized = normalize_stock_code(code)
+    symbol = tencent_symbol(normalized)
+    df = ak.stock_zh_a_hist_tx(
+        symbol=symbol,
+        start_date=start,
+        end_date=end,
+        adjust="qfq",
+    )
+    if df.empty:
+        return pd.DataFrame()
+
+    rename_map = {
+        "date": "trade_date",
+        "日期": "trade_date",
+        "open": "open",
+        "开盘": "open",
+        "high": "high",
+        "最高": "high",
+        "low": "low",
+        "最低": "low",
+        "close": "close",
+        "收盘": "close",
+        "amount": "amount",
+        "成交额": "amount",
+        "volume": "volume",
+        "成交量": "volume",
+    }
+    work = df.rename(columns=rename_map).copy()
+    if "trade_date" not in work.columns:
+        return pd.DataFrame()
+    work["trade_date"] = pd.to_datetime(work["trade_date"]).dt.date
+    for column in ["open", "high", "low", "close", "volume", "amount"]:
+        if column not in work.columns:
+            work[column] = None
+    return work[["trade_date", "open", "high", "low", "close", "volume", "amount"]]
+
+
 __all__ = [
     "benchmark_pct_change",
-    "code_digits",
     "fetch_index_pct_change",
+    "fetch_kline_tx",
     "fetch_quote",
     "fetch_quote_metrics",
     "fetch_quotes",
+    "fetch_realtime_price",
+    "fetch_realtime_quote",
 ]

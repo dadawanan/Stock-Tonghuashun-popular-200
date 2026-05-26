@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.api.dependencies import get_current_user, get_session
-from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
 from stock_service.schemas.responses import ApiResponse
 
 router = APIRouter(prefix="/api/quant/market", tags=["quant-market"])

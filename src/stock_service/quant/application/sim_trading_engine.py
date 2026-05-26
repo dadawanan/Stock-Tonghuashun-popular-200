@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import quant_crud
-from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
 from stock_service.quant.domain.trading_calendar import is_trading_time
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class SimTradingEngine:
         if account["status"] != "active":
             raise ValueError("Account is not active")
 
-        # Get real-time price from Sina
+        # Get real-time price from Tencent
         try:
             exec_price = await asyncio.to_thread(fetch_realtime_price, code)
             if not exec_price:
@@ -148,7 +148,7 @@ class SimTradingEngine:
                 f"Insufficient available quantity: {position['available_quantity']} (T+1)"
             )
 
-        # Get real-time price from Sina
+        # Get real-time price from Tencent
         try:
             exec_price = await asyncio.to_thread(fetch_realtime_price, code)
             if not exec_price:

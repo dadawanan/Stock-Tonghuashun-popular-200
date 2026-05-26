@@ -163,9 +163,9 @@ async def update_popularity_daily_data() -> None:
         total_rows = 0
         for code in codes:
             try:
-                from stock_service.infrastructure.providers.sina_provider import fetch_kline_sina
+                from stock_service.infrastructure.providers.tencent_provider import fetch_kline_tx
                 df = await asyncio.to_thread(
-                    fetch_kline_sina, code,
+                    fetch_kline_tx, code,
                     start_date.strftime("%Y%m%d"),
                     end_date.strftime("%Y%m%d"),
                 )
@@ -306,7 +306,7 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                     try:
                         if signal.signal_type == SignalType.BUY:
                             # 获取实时价格
-                            from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                            from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
                             current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
 
                             if not current_price or current_price <= 0:
@@ -335,7 +335,7 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                                 session, account_id, signal.code
                             )
                             if position and position.get("available_quantity", 0) > 0:
-                                from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                                from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
                                 current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
 
                                 if current_price and current_price > 0:
@@ -379,7 +379,7 @@ async def check_pending_orders() -> None:
             for order in pending_orders:
                 try:
                     # 获取实时价格（新浪）
-                    from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                    from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
                     current_price = await asyncio.to_thread(fetch_realtime_price, order["code"])
 
                     if not current_price or current_price <= 0:
