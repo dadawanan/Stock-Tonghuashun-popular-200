@@ -37,6 +37,10 @@ module.exports = {
       env: {
         ...inheritShellEnv,
         PYTHONPATH: path.join(root, "src"),
+        // 配置允许的前端域名（CORS），支持多个域名用逗号分隔
+        // 开发环境：http://localhost:8001
+        // 生产环境：http://101.35.255.200:8001 或其他域名
+        ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "http://localhost:8001,http://101.35.255.200:8001",
       },
       autorestart: true,
       max_restarts: 15,
@@ -55,7 +59,7 @@ module.exports = {
         WEB_MODE: WEB_MODE,
         // 生产模式下配置 API 地址（默认空，使用相对路径 /api）
         // 如果前后端不在同一域名，可设置：API_BASE_URL=http://your-api-domain:8000
-        API_BASE_URL: process.env.API_BASE_URL || "http://localhost:8000",
+        API_BASE_URL: process.env.API_BASE_URL || "",
       },
       autorestart: true,
       max_restarts: 15,

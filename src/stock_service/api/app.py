@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from stock_service.api.dependencies import lifespan
 from stock_service.api.routes.analysis import router as analysis_router
@@ -16,7 +18,24 @@ from stock_service.quant.api.routes import strategies, backtest, sim_trading, fe
 logger = logging.getLogger("stock-api")
 
 
+# 从环境变量读取允许的前端域名，支持多个域名（逗号分隔）
+# 示例: ALLOWED_ORIGINS=http://localhost:8001,http://101.35.255.200:8001
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8001")
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
+logger.info(f"允许的前端域名: {allowed_origins}")
+
+
 app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
+
+# 配置 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,  # 允许的来源
+    allow_credentials=True,          # 允许携带凭证（cookies）
+    allow_methods=["*"],             # 允许所有 HTTP 方法
+    allow_headers=["*"],             # 允许所有请求头
+)
 
 
 @app.get("/")
