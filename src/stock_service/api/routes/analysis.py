@@ -11,8 +11,8 @@ from stock_service.application.services.analysis_service import run_analysis, st
 from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
 from stock_service.application.services.pipeline_service import run_all_pipeline
 from stock_service.crud import v2_crud
-from stock_service.domain.services.analysis_rules import normalize_stock_code
-from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
+from stock_service.infrastructure.providers.market_data_hub import fetch_stock_name
+from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 from stock_service.schemas.responses import ApiResponse
 
 
@@ -54,7 +54,7 @@ async def api_analyze(
         stock_name = str((match or {}).get("stock_name") or "").strip()
         if not stock_name:
             try:
-                stock_name = str(fetch_quote(normalized).get("stock_name") or "").strip()
+                stock_name = str(fetch_stock_name(normalized) or "").strip()
             except Exception:
                 stock_name = ""
         row: dict[str, Any] = {

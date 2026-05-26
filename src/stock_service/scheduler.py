@@ -19,7 +19,7 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 
 from stock_service.application.services.analysis_service import run_and_store
 from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows

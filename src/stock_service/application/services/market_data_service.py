@@ -10,9 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.application.services.popularity_service import build_stock_rows
 from stock_service.crud import v2_crud
-from stock_service.infrastructure.providers.eastmoney_provider import benchmark_pct_change, fetch_latest_fund_flow, fetch_news_rows, fetch_quote, normalize_stock_code
+from stock_service.infrastructure.config.settings import settings
+from stock_service.infrastructure.providers.market_data_hub import (
+    benchmark_pct_change,
+    fetch_latest_fund_flow,
+    fetch_news_rows,
+    fetch_quote,
+)
+from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 
-_FETCH_SEM = asyncio.Semaphore(5)
+_MARKET_FETCH_SEM = asyncio.Semaphore(settings.market_fetch_concurrency)
+_NEWS_FETCH_SEM = asyncio.Semaphore(settings.news_fetch_concurrency)
 
 
 def _format_fetch_error(exc: BaseException, *, max_depth: int = 5) -> str:
@@ -70,7 +78,7 @@ def read_stock_pool(stocks_file: Path) -> pd.DataFrame:
 
 
 async def _fetch_one_stock_news(stock_code: str, stock_name: str, run_id: int, max_news_per_stock: int) -> list[dict[str, Any]]:
-    async with _FETCH_SEM:
+    async with _NEWS_FETCH_SEM:
         items = await asyncio.to_thread(fetch_news_rows, stock_code, stock_name, max_news_per_stock)
         for item in items:
             item["run_id"] = run_id
@@ -97,25 +105,46 @@ async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_i
 
 
 async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_latest_price: Any, source_pct_change: Any) -> dict[str, Any]:
-    async with _FETCH_SEM:
+    async with _MARKET_FETCH_SEM:
         def _sync() -> dict[str, Any]:
             quote: dict[str, Any] = {
-                "latest_price": None if pd.isna(source_latest_price) else float(source_latest_price),
-                "pct_change": None if pd.isna(source_pct_change) else float(source_pct_change),
-                "change_amount": None, "open_price": None, "high_price": None, "low_price": None,
-                "prev_close": None, "volume": None, "amount": None, "volume_ratio": None,
-                "turnover_rate": None, "amplitude": None,
+                "latest_price": None,
+                "pct_change": None,
+                "change_amount": None,
+                "open_price": None,
+                "high_price": None,
+                "low_price": None,
+                "prev_close": None,
+                "volume": None,
+                "amount": None,
+                "volume_ratio": None,
+                "turnover_rate": None,
+                "amplitude": None,
+                "source": None,
             }
-            if quote["latest_price"] is None or quote["pct_change"] is None:
-                try:
-                    quote.update({k: v for k, v in fetch_quote(stock_code).items() if k in quote and v is not None})
-                except Exception as exc:
-                    print(f"[market] {stock_code} 实时行情接口失败: {_format_fetch_error(exc)}")
+            try:
+                quote.update(
+                    {
+                        k: v
+                        for k, v in fetch_quote(stock_code).items()
+                        if k in quote and v is not None
+                    }
+                )
+            except Exception as exc:
+                print(f"[market] {stock_code} 实时行情接口失败: {_format_fetch_error(exc)}")
+            if quote["latest_price"] is None and not pd.isna(source_latest_price):
+                quote["latest_price"] = float(source_latest_price)
+            if quote["pct_change"] is None and not pd.isna(source_pct_change):
+                quote["pct_change"] = float(source_pct_change)
             try:
                 fund_flow = fetch_latest_fund_flow(stock_code)
             except Exception as exc:
                 print(f"[market] {stock_code} 资金流获取失败: {_format_fetch_error(exc)}")
-                fund_flow = {"flow_date": None, "main_net_inflow": 0.0, "main_net_inflow_ratio": 0.0}
+                fund_flow = {
+                    "flow_date": None,
+                    "main_net_inflow": 0.0,
+                    "main_net_inflow_ratio": 0.0,
+                }
             flow_date = _to_optional_db_date(fund_flow.get("flow_date"))
             benchmark_pct = None
             relative_strength = None
@@ -130,6 +159,7 @@ async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_lates
                 "stock_name": stock_name,
                 "trade_date": flow_date,
                 **quote,
+                "source": quote.get("source") or "mixed",
                 "main_net_inflow": fund_flow.get("main_net_inflow", 0.0),
                 "main_net_inflow_ratio": fund_flow.get("main_net_inflow_ratio", 0.0),
                 "fund_flow_date": flow_date,

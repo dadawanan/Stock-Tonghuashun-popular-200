@@ -9,6 +9,13 @@ import akshare as ak
 import pandas as pd
 from curl_cffi import requests as curl_requests
 
+from stock_service.infrastructure.providers.stock_code import (
+    code_digits,
+    eastmoney_market_prefix as stock_market_prefix,
+    normalize_stock_code,
+    stock_market_suffix,
+)
+
 
 EASTMONEY_QUOTE_URL = "https://push2.eastmoney.com/api/qt/stock/get"
 DEFAULT_HEADERS = {
@@ -25,34 +32,6 @@ DEFAULT_BENCHMARKS = {
     "SZ": [("0.399001", "深证成指"), ("1.000001", "上证指数")],
     "BJ": [("0.899050", "北证50"), ("0.399001", "深证成指"), ("1.000001", "上证指数")],
 }
-
-
-def normalize_stock_code(value: object) -> str:
-    text = str(value).strip().upper()
-    if "." in text:
-        return text
-    if text.isdigit() and len(text) == 6:
-        if text.startswith(("6", "9")):
-            return f"{text}.SH"
-        if text.startswith("8"):
-            return f"{text}.BJ"
-        return f"{text}.SZ"
-    return text
-
-
-def stock_market_suffix(stock_code: str) -> str:
-    normalized = normalize_stock_code(stock_code)
-    return normalized.split(".")[-1] if "." in normalized else "SZ"
-
-
-def stock_market_prefix(stock_code: str) -> str:
-    return {"SH": "1", "SZ": "0", "BJ": "0"}.get(stock_market_suffix(stock_code), "0")
-
-
-def code_digits(stock_code: str) -> str:
-    return normalize_stock_code(stock_code).split(".")[0]
-
-
 def to_float(value: Any, divisor: float = 1.0) -> float | None:
     if value is None:
         return None
@@ -204,4 +183,3 @@ def fetch_news_rows(stock_code: str, stock_name: str, max_news_per_stock: int = 
             }
         )
     return rows
-

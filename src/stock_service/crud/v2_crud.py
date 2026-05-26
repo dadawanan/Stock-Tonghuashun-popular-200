@@ -5,7 +5,6 @@ from typing import Any, Sequence
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from stock_service.domain.services.analysis_rules import normalize_stock_code
 from stock_service.db.models.v2_models import (
     MarketSnapshot,
     NewsAnalysis,
@@ -15,6 +14,7 @@ from stock_service.db.models.v2_models import (
     StockAnalysisSnapshot,
     StockMaster,
 )
+from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 
 _STOCK_MASTER_FIELDS = {c.name for c in StockMaster.__table__.columns}
 
