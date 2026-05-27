@@ -11,6 +11,7 @@ from stock_service.infrastructure.providers.akshare_provider import (
 from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 from stock_service.infrastructure.providers.tencent_provider import (
     benchmark_pct_change as benchmark_pct_change_tencent,
+    fetch_latest_fund_flow as fetch_latest_fund_flow_tencent,
     fetch_quote as fetch_quote_tencent,
 )
 
@@ -83,6 +84,11 @@ def benchmark_pct_change(stock_code: str) -> float:
 
 
 def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
+    """获取资金流数据：优先腾讯财经 ff_ 接口，失败降级到 akshare（东方财富）。"""
+    try:
+        return fetch_latest_fund_flow_tencent(stock_code)
+    except Exception:
+        pass
     return fetch_latest_fund_flow_akshare(stock_code)
 
 

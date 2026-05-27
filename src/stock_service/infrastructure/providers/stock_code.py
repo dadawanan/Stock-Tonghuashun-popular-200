@@ -6,7 +6,7 @@ from stock_service.domain.services.stock_utils import (
     stock_market_suffix,
 )
 
-
+## 暂时无用
 def eastmoney_market_prefix(stock_code: str) -> str:
     return {"SH": "1", "SZ": "0", "BJ": "0"}.get(stock_market_suffix(stock_code), "0")
 

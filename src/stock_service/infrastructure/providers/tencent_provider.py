@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import akshare as ak
@@ -20,6 +21,7 @@ TENCENT_HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
     ),
 }
+TENCENT_FUND_FLOW_URL = "https://qt.gtimg.cn/q=ff_"
 DEFAULT_BENCHMARKS = {
     "SH": ["sh000001", "sh000300"],
     "SZ": ["sz399001", "sz399006", "sh000300"],
@@ -139,6 +141,60 @@ def benchmark_pct_change(stock_code: str) -> float:
     return 0.0
 
 
+def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
+    """通过腾讯财经 ff_ 接口获取个股资金流数据。
+
+    接口地址: https://qt.gtimg.cn/q=ff_{symbol}
+    返回以 ~ 分隔的字段:
+      0: 股票代码      1: 主力流入      2: 主力流出
+      3: 主力净流入    4: 主力净占比    5: 散户流入
+      6: 散户流出      7: 散户净流入    8: 散户净占比
+      9: 总成交       10-11: 未知      12: 股票名称
+     13: 日期
+    """
+    normalized = normalize_stock_code(stock_code)
+    symbol = tencent_symbol(normalized)  # e.g. "sz000858"
+    headers = {
+        **TENCENT_HEADERS,
+        "Referer": f"https://gu.qq.com/{symbol}",
+    }
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            response = requests.get(
+                TENCENT_FUND_FLOW_URL + symbol,
+                headers=headers,
+                timeout=15,
+            )
+            response.raise_for_status()
+            body = response.content.decode("gbk", errors="ignore").strip()
+
+            # 解析返回: v_ff_sz000858="..."
+            if "=" not in body or '"' not in body:
+                raise RuntimeError(f"腾讯资金流返回格式异常: {body[:100]}")
+            inner = body.split('"', 2)[1]
+            if not inner:
+                raise RuntimeError(f"腾讯资金流返回为空: {body[:100]}")
+            fields = inner.split("~")
+            if len(fields) < 14:
+                raise RuntimeError(f"腾讯资金流返回字段不足(需>=14, 实际{len(fields)}): {body[:200]}")
+
+            main_net_inflow = _to_float(fields[3])
+            main_net_inflow_ratio = _to_float(fields[4])
+            flow_date = fields[13] if fields[13] else None
+
+            return {
+                "flow_date": flow_date,
+                "main_net_inflow": main_net_inflow if main_net_inflow is not None else 0.0,
+                "main_net_inflow_ratio": main_net_inflow_ratio if main_net_inflow_ratio is not None else 0.0,
+                "source": "tencent",
+            }
+        except Exception as exc:
+            last_error = exc
+            time.sleep(attempt)
+    raise RuntimeError(f"腾讯资金流获取失败: {normalized}") from last_error
+
+
 def fetch_quote_metrics(stock_code: str) -> dict[str, Any]:
     quote = fetch_quote(stock_code)
     return {
@@ -197,6 +253,7 @@ __all__ = [
     "benchmark_pct_change",
     "fetch_index_pct_change",
     "fetch_kline_tx",
+    "fetch_latest_fund_flow",
     "fetch_quote",
     "fetch_quote_metrics",
     "fetch_quotes",
