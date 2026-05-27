@@ -24,7 +24,8 @@ export default defineConfig({
     },
   },
   // 定义运行时配置，用于注入 API 地址
+  // 生产环境留空（通过 nginx 代理），开发时可通过环境变量指定
   define: {
-    'process.env.API_BASE_URL': process.env.API_BASE_URL || 'http://101.35.255.200:8001',
+    'process.env.API_BASE_URL': process.env.API_BASE_URL || '',
   },
 });
