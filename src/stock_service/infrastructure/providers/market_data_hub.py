@@ -8,13 +8,14 @@ from stock_service.infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)
 from stock_service.infrastructure.providers.akshare_provider import (
-    fetch_latest_fund_flow as fetch_latest_fund_flow_akshare,
     fetch_news_rows as fetch_news_rows_akshare,
+)
+from stock_service.infrastructure.providers.eastmoney_provider import (
+    fetch_latest_fund_flow as fetch_latest_fund_flow_eastmoney,
 )
 from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 from stock_service.infrastructure.providers.tencent_provider import (
     benchmark_pct_change as benchmark_pct_change_tencent,
-    fetch_latest_fund_flow as fetch_latest_fund_flow_tencent,
     fetch_quote as fetch_quote_tencent,
 )
 
@@ -87,12 +88,8 @@ def benchmark_pct_change(stock_code: str) -> float:
 
 
 def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
-    """获取资金流数据：优先腾讯财经 ff_ 接口，失败降级到 akshare（东方财富）。"""
-    try:
-        return fetch_latest_fund_flow_tencent(stock_code)
-    except Exception as exc:
-        logger.warning("[fund-flow] 腾讯资金流失败 %s: %s，降级到东方财富", stock_code, exc)
-    return fetch_latest_fund_flow_akshare(stock_code)
+    """获取资金流数据：东方财富 push2 实时接口。"""
+    return fetch_latest_fund_flow_eastmoney(stock_code)
 
 
 def fetch_news_rows(stock_code: str, stock_name: str, max_news_per_stock: int = 20) -> list[dict[str, Any]]:
