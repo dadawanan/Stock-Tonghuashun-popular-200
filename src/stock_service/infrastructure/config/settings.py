@@ -75,7 +75,31 @@ def _get_csv_env(name: str, default: str) -> tuple[str, ...]:
     return tuple(items)
 
 
+def _resolve_db_env() -> None:
+    """根据 APP_ENV 加载对应的数据库配置。
+
+    APP_ENV=dev  → 读 TEST_DB_* 并覆盖到 DB_*
+    APP_ENV=prod → 直接读 DB_*（默认行为）
+    """
+    app_env = os.getenv("APP_ENV", "prod").strip().lower()
+    if app_env != "dev":
+        return
+    mapping = {
+        "TEST_DB_HOST": "DB_HOST",
+        "TEST_DB_PORT": "DB_PORT",
+        "TEST_DB_NAME": "DB_NAME",
+        "TEST_DB_USER": "DB_USER",
+        "TEST_DB_PASSWORD": "DB_PASSWORD",
+        "TEST_DB_SSL": "DB_SSL",
+    }
+    for src, dst in mapping.items():
+        val = os.getenv(src)
+        if val is not None:
+            os.environ[dst] = val
+
+
 _load_dotenv()
+_resolve_db_env()
 
 
 class Settings:

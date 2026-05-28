@@ -14,6 +14,7 @@ const stockApiPython = fs.existsSync(venvPython) ? venvPython : "python3";
 const inheritShellEnv = {
   PATH: process.env.PATH || "",
   HOME: process.env.HOME || "",
+  APP_ENV: process.env.APP_ENV || "prod",
 };
 
 module.exports = {

@@ -33,6 +33,10 @@ kill_port() {
   fi
 }
 
+# APP_ENV: ./start.sh → prod, ./start.sh dev → dev
+export APP_ENV="${1:-prod}"
+echo "[start] APP_ENV=${APP_ENV}"
+
 kill_port 8000
 
 # 删掉正确名称的应用

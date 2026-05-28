@@ -306,9 +306,18 @@ class SimTradingEngine:
     async def _update_total_assets(self, account_id: int) -> None:
         account = await quant_crud.get_sim_account(self._session, account_id)
         positions = await quant_crud.get_positions(self._session, account_id)
-        position_value = sum(
-            float(p.get("avg_price", 0)) * p["quantity"] for p in positions
-        )
+        today = date.today()
+        position_value = 0.0
+        for p in positions:
+            latest_daily = await quant_crud.get_stock_daily(
+                self._session, p["code"],
+                start_date=today, end_date=today,
+            )
+            if latest_daily:
+                close_price = float(latest_daily[0]["close"])
+            else:
+                close_price = float(p.get("avg_price", 0))
+            position_value += close_price * p["quantity"]
         total = float(account["current_capital"]) + position_value
         await quant_crud.update_sim_account(self._session, account_id, {
             "total_assets": Decimal(str(round(total, 2))),
