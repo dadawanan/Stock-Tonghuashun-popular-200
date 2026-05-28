@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
 from stock_service.infrastructure.config.settings import settings
+
+logger = logging.getLogger(__name__)
 from stock_service.infrastructure.providers.akshare_provider import (
     fetch_latest_fund_flow as fetch_latest_fund_flow_akshare,
     fetch_news_rows as fetch_news_rows_akshare,
@@ -87,8 +90,8 @@ def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
     """获取资金流数据：优先腾讯财经 ff_ 接口，失败降级到 akshare（东方财富）。"""
     try:
         return fetch_latest_fund_flow_tencent(stock_code)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("[fund-flow] 腾讯资金流失败 %s: %s，降级到东方财富", stock_code, exc)
     return fetch_latest_fund_flow_akshare(stock_code)
 
 
