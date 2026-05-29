@@ -1,0 +1,37 @@
+.accountCard {
+  cursor: pointer;
+  transition: border-color 0.2s;
+
+  &:hover {
+    border-color: #1677ff;
+  }
+}
+
+.accountCardActive {
+  border-color: #1677ff !important;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+
+.statsCard {
+  text-align: center;
+
+  :global(.ant-statistic-title) {
+    font-size: 13px;
+    color: #666;
+  }
+
+  :global(.ant-statistic-content) {
+    font-size: 24px;
+  }
+}
+
+.sectionGap {
+  margin-bottom: 16px;
+}
+
+.hint {
+  color: #999;
+  font-size: 12px;
+  margin-top: -8px;
+  margin-bottom: 16px;
+}

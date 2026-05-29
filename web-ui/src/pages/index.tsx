@@ -9,6 +9,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Input,
   message,
   Modal,
   Row,
@@ -31,6 +32,7 @@ import {
 } from "../utils";
 import dayjs from "dayjs";
 import styles from "./index.less";
+import commonStyles from "./common.less";
 
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -431,7 +433,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className={styles.page}>
+    <div className={commonStyles.pageContainer}>
       {/* Stats Cards */}
       <Row gutter={[16, 16]} className={styles.statsRow}>
         <Col xs={12} sm={6}>
@@ -567,13 +569,13 @@ export default function HomePage() {
         onOk={() => submitAnalyzeSingle()}
         afterClose={() => setSingleStockInput("")}
       >
-        <input
-          className={styles.stockInput}
+        <Input
           placeholder="6位代码或完整代码，如 688353 / 002155.SZ"
           value={singleStockInput}
           disabled={singleAnalyzing}
           onChange={(e) => setSingleStockInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void submitAnalyzeSingle()}
+          size="large"
         />
       </Modal>
 

@@ -16,6 +16,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { quantApi, Strategy } from "../../utils";
+import styles from "../common.less";
 
 const { Title, Paragraph, Text, Link } = Typography;
 
@@ -525,22 +526,16 @@ export default function StrategiesPage() {
   const selectedType = Form.useWatch("type", form);
 
   return (
-    <div style={{ padding: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        <Title level={3}>策略管理</Title>
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <Title level={3} className={styles.pageTitle}>策略管理</Title>
         <Button type="primary" onClick={handleCreate}>
           新建策略
         </Button>
       </div>
 
       {/* 使用说明 */}
-      <Card title="使用说明" style={{ marginBottom: 16 }}>
+      <Card title="使用说明" className={styles.sectionGap}>
         <Paragraph>
           策略是量化交易的核心，决定了何时买入、何时卖出。系统提供 4
           种内置策略，每种策略有不同的参数可调。

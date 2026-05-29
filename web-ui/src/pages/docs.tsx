@@ -1,6 +1,8 @@
+import styles from "./common.less";
+
 const DocsPage = () => {
   return (
-    <div>
+    <div className={styles.pageContainer}>
       <p>This is umi docs.</p>
     </div>
   );

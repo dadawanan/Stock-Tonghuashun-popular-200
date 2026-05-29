@@ -1,4 +1,5 @@
 import { Timeline, Typography } from "antd";
+import styles from "./common.less";
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -49,8 +50,8 @@ const CHANGELOG: LogEntry[] = [
 
 export default function ChangelogPage() {
   return (
-    <div>
-      <Title level={2}>更新日志</Title>
+    <div className={styles.pageContainer}>
+      <Title level={2} className={styles.pageTitle}>更新日志</Title>
       <Paragraph type="secondary">
         记录各版本新增能力与问题修复，便于对照环境与排查。
       </Paragraph>
