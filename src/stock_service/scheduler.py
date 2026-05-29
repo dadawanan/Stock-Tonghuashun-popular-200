@@ -304,7 +304,8 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                 max_position_pct = account_config.get("max_position_pct", 0.2)
 
                 # 检查是否在交易时间内
-                trading, reason = is_trading_time()
+                from stock_service.quant.domain.trading_calendar import is_trading_time as check_trading_time
+                trading, reason = check_trading_time()
                 if not trading:
                     # 非交易时间 → 创建挂单，等开盘后自动成交
                     logger.info(f"[auto-trade] 非交易时间（{reason}），创建挂单")

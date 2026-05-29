@@ -1,0 +1,96 @@
+.page {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.statsRow {
+  margin-bottom: 16px;
+}
+
+.statCard {
+  text-align: center;
+
+  :global(.ant-statistic-title) {
+    font-size: 13px;
+    color: #666;
+  }
+
+  :global(.ant-statistic-content) {
+    font-size: 28px;
+  }
+}
+.ant-table-cell-fix-start {
+  background: #fff !important;
+}
+
+.actionBar {
+  margin-bottom: 16px;
+}
+
+.filterLabel {
+  font-size: 13px;
+  color: #666;
+}
+
+.scoreBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scoreBarBg {
+  flex: 1;
+  height: 6px;
+  background: #f0f0f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.scoreBarFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.scoreBarValue {
+  min-width: 28px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  color: #333;
+}
+
+.rowBullish {
+  background: rgba(82, 196, 26, 0.04);
+}
+
+.rowBullish:hover > td {
+  background: rgba(82, 196, 26, 0.08);
+}
+
+.rowBearish {
+  background: rgba(255, 77, 79, 0.04);
+}
+
+.rowBearish:hover > td {
+  background: rgba(255, 77, 79, 0.08);
+}
+
+.ant-table-cell-fix {
+  background: #fff !important;
+}
+
+.stockInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+
+  &:focus {
+    border-color: #1677ff;
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  }
+}

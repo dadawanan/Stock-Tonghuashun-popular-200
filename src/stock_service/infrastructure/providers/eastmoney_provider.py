@@ -17,8 +17,9 @@ from stock_service.infrastructure.providers.stock_code import (
     stock_market_suffix,
 )
 
-# 资金流请求限速：全局最小间隔（秒）
-_FUND_FLOW_MIN_INTERVAL = 0.5
+# 资金流请求限速：全局最小间隔 + 随机抖动
+_FUND_FLOW_MIN_INTERVAL = 1.5
+_FUND_FLOW_JITTER = 1.0  # 随机 0~1s 抖动
 _last_fund_flow_ts: float = 0.0
 
 # 随机 User-Agent 池
@@ -148,10 +149,11 @@ def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
     normalized = normalize_stock_code(stock_code)
     secid = f"{stock_market_prefix(normalized)}.{code_digits(normalized)}"
 
-    # 限速：确保请求间隔不低于最小值
+    # 限速：最小间隔 + 随机抖动，避免批量请求被封
     elapsed = time.time() - _last_fund_flow_ts
-    if elapsed < _FUND_FLOW_MIN_INTERVAL:
-        time.sleep(_FUND_FLOW_MIN_INTERVAL - elapsed)
+    wait = _FUND_FLOW_MIN_INTERVAL + random.uniform(0, _FUND_FLOW_JITTER) - elapsed
+    if wait > 0:
+        time.sleep(wait)
 
     url = "http://push2.eastmoney.com/api/qt/stock/fflow/kline/get"
     params = {
