@@ -281,6 +281,26 @@ async def insert_market_batch(session: AsyncSession, rows: list[dict]) -> None:
         session.add(MarketSnapshot(**r))
 
 
+async def get_latest_market_snapshot(session: AsyncSession) -> dict[str, dict]:
+    """获取最新 market_snapshot，返回 {stock_code: {...}} 格式"""
+    sub = select(func.max(MarketSnapshot.snapshot_time)).scalar_subquery()
+    result = await session.execute(
+        select(MarketSnapshot).where(MarketSnapshot.snapshot_time == sub)
+    )
+    data = {}
+    for row in result.scalars().all():
+        d = _rows_to_dicts([row])[0]
+        data[d["stock_code"]] = {
+            "pct_change": float(d.get("pct_change") or 0),
+            "volume_ratio": float(d.get("volume_ratio") or 0),
+            "main_net_inflow": float(d.get("main_net_inflow") or 0),
+            "turnover_rate": float(d.get("turnover_rate") or 0),
+            "amplitude": float(d.get("amplitude") or 0),
+            "latest_price": float(d.get("latest_price") or 0),
+        }
+    return data
+
+
 # ── NewsAnalysis ──
 
 

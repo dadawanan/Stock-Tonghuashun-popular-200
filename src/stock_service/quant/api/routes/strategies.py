@@ -106,26 +106,51 @@ async def preview_signals(
     if not stock_codes:
         raise HTTPException(400, "没有人气榜数据，请先运行人气榜采集")
 
-    # 使用数据库中最新的交易日，而非 date.today()（可能没有当日数据）
-    from sqlalchemy import func, select
+    # 使用人气榜股票覆盖最多的交易日（而非全局最新，可能只有少量数据）
+    from sqlalchemy import func, select, text
     from stock_service.db.models.quant_models import StockDaily
 
-    latest_date_row = await session.execute(select(func.max(StockDaily.trade_date)))
-    trade_date = latest_date_row.scalar()
+    latest_date_row = await session.execute(text("""
+        SELECT sd.trade_date, COUNT(DISTINCT sd.code) as cnt
+        FROM stock_daily sd
+        WHERE sd.code IN (
+            SELECT stock_code FROM popularity_snapshot
+            WHERE trade_date = (SELECT MAX(trade_date) FROM popularity_snapshot)
+        )
+        AND sd.trade_date >= CURRENT_DATE - INTERVAL '7 days'
+        GROUP BY sd.trade_date
+        ORDER BY cnt DESC
+        LIMIT 1
+    """))
+    row = latest_date_row.first()
+    trade_date = row[0] if row else None
     if not trade_date:
-        raise HTTPException(400, "没有行情数据，请先运行数据采集")
+        raise HTTPException(400, "没有行情数据，请先运行数据补全")
 
     # 填充上下文数据
+    # 优先从 market_snapshot 获取实时数据（pct_change/volume_ratio/main_net_inflow）
+    # 再从 stock_daily 补充 OHLCV
+    market_snapshot = await v2_crud.get_latest_market_snapshot(session)
+
     market_data: dict[str, dict] = {}
     indicators: dict[str, dict] = {}
     for code in stock_codes:
+        data: dict = {}
+        # 从 stock_daily 获取 OHLCV
         daily = await quant_crud.get_stock_daily(session, code, start_date=trade_date, end_date=trade_date)
         if daily:
-            market_data[code] = {
+            data.update({
                 k: float(v) if isinstance(v, Decimal) else v
                 for k, v in daily[0].items()
-            }
-        ind = await quant_crud.get_stock_indicator(session, code, trade_date=trade_date)
+            })
+        # 从 market_snapshot 补充实时字段（覆盖 stock_daily 中可能缺失的字段）
+        snap = market_snapshot.get(code)
+        if snap:
+            data.update(snap)
+        if data:
+            market_data[code] = data
+
+        ind = await quant_crud.get_stock_indicator(session, code)
         if ind:
             indicators[code] = {
                 k: float(v) for k, v in ind.items()

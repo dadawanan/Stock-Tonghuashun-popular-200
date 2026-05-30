@@ -618,11 +618,12 @@ async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) 
     from sqlalchemy import text
     for row in rows:
         await session.execute(text("""
-            INSERT INTO stock_indicator (code, trade_date, ma5, ma20, rsi, macd, created_at, updated_at)
-            VALUES (:code, :trade_date, :ma5, :ma20, :rsi, :macd, NOW(), NOW())
+            INSERT INTO stock_indicator (code, trade_date, ma5, ma20, rsi, macd, boll_upper, boll_lower, created_at, updated_at)
+            VALUES (:code, :trade_date, :ma5, :ma20, :rsi, :macd, :boll_upper, :boll_lower, NOW(), NOW())
             ON CONFLICT (code, trade_date) DO UPDATE SET
                 ma5 = EXCLUDED.ma5, ma20 = EXCLUDED.ma20,
                 rsi = EXCLUDED.rsi, macd = EXCLUDED.macd,
+                boll_upper = EXCLUDED.boll_upper, boll_lower = EXCLUDED.boll_lower,
                 updated_at = NOW()
         """), row)
     await session.flush()

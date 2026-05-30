@@ -234,6 +234,7 @@ async def compute_and_store_indicators(session: AsyncSession, stock_codes: list[
         ma20 = TechnicalIndicators.ma(close, 20)
         rsi = TechnicalIndicators.rsi(close)
         macd_line, _, _ = TechnicalIndicators.macd(close)
+        boll_upper, _, boll_lower = TechnicalIndicators.bollinger_bands(close)
 
         # 只写最新一条指标
         last = df.iloc[-1]
@@ -244,6 +245,8 @@ async def compute_and_store_indicators(session: AsyncSession, stock_codes: list[
             "ma20": round(float(ma20.iloc[-1]), 4) if pd.notna(ma20.iloc[-1]) else None,
             "rsi": round(float(rsi.iloc[-1]), 4) if pd.notna(rsi.iloc[-1]) else None,
             "macd": round(float(macd_line.iloc[-1]), 4) if pd.notna(macd_line.iloc[-1]) else None,
+            "boll_upper": round(float(boll_upper.iloc[-1]), 4) if pd.notna(boll_upper.iloc[-1]) else None,
+            "boll_lower": round(float(boll_lower.iloc[-1]), 4) if pd.notna(boll_lower.iloc[-1]) else None,
         }
         await quant_crud.batch_upsert_stock_indicator(session, [indicator_row])
         total += 1
