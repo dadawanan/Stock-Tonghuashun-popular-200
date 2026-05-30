@@ -1,0 +1,185 @@
+# 分析规则配置
+# 修改后需重启服务生效
+
+# 综合评分权重
+weights:
+  text: 0.55      # 文本情绪权重
+  market: 0.45    # 市场行为权重
+
+# 情绪关键词
+positive_words:
+  - 增长
+  - 提升
+  - 超预期
+  - 创新高
+  - 强劲
+  - 加速
+  - 回暖
+  - 改善
+
+negative_words:
+  - 下滑
+  - 亏损
+  - 承压
+  - 风险
+  - 恶化
+  - 减值
+  - 滞涨
+  - 波动
+
+# 关键词命中分值
+keyword_hit_score: 0.4
+
+# 情绪强度阈值
+sentiment_thresholds:
+  strong_positive: 1.8
+  medium_positive: 0.6
+  strong_negative: -1.8
+  medium_negative: -0.6
+
+# 长期/短期判断关键词
+duration_keywords:
+  - 战略
+  - 产能
+  - 订单
+  - 业绩
+  - 量产
+
+# 事实支撑判断关键词
+fact_support_keywords:
+  - 公告
+  - 财报
+  - 中标
+  - 合同
+  - 数据
+
+# 事件模式
+event_patterns:
+  major_order:
+    keywords:
+      - 中标
+      - 大单
+      - 订单
+      - 签约
+      - 拿下项目
+      - 合作框架
+    event_label: 利好
+    event_score: 2.0
+    bullish_logic: 订单或合同提升收入预期，说明业务拓展被市场验证。
+    bearish_logic: 若订单兑现周期过长，短期业绩和现金流未必立刻改善。
+
+  policy_support:
+    keywords:
+      - 政策支持
+      - 补贴
+      - 纳入目录
+      - 战略合作
+      - 产业扶持
+    event_label: 利好
+    event_score: 1.5
+    bullish_logic: 政策或产业资源倾斜有利于估值抬升。
+    bearish_logic: 政策催化若缺少基本面落地，容易变成情绪交易。
+
+  earnings_growth:
+    keywords:
+      - 业绩增长
+      - 净利润增长
+      - 扭亏
+      - 预增
+      - 超预期
+    event_label: 利好
+    event_score: 2.0
+    bullish_logic: 财务指标改善通常更容易获得持续性资金认可。
+    bearish_logic: 若增长来自非经常性收益，持续性会被打折。
+
+  technology_breakthrough:
+    keywords:
+      - 新品发布
+      - 技术突破
+      - 专利
+      - 量产
+      - 发布会
+    event_label: 中性偏多
+    event_score: 1.0
+    bullish_logic: 技术领先可能打开新市场空间。
+    bearish_logic: 研发投入和商业化周期可能压制短期利润。
+
+  management_risk:
+    keywords:
+      - 被查
+      - 调查
+      - 立案
+      - 违规
+      - 诉讼
+      - 减持
+    event_label: 利空
+    event_score: -2.0
+    bullish_logic: 若风险已被充分定价，后续可能迎来情绪修复。
+    bearish_logic: 治理风险会削弱市场信任并压制估值。
+
+  supply_chain_risk:
+    keywords:
+      - 火灾
+      - 停产
+      - 事故
+      - 召回
+      - 供应中断
+      - 断供
+    event_label: 利空
+    event_score: -1.5
+    bullish_logic: 若影响范围有限，错杀后可能出现修复。
+    bearish_logic: 供应链扰动可能传导到产能、交付和盈利。
+
+# 市场行为评分规则
+market_behavior:
+  # 主动性上涨条件
+  active_rise:
+    pct_change_min: 3.0
+    volume_ratio_min: 1.5
+    relative_strength_min: 1.0
+    score: 2.0
+
+  # 被动性跟涨条件
+  passive_rise:
+    pct_change_min: 0
+    relative_strength_max: 0.5
+    score: 0.5
+
+  # 高位巨量滞涨
+  high_volume_stagnation:
+    turnover_rate_min: 20
+    pct_change_max: 1.0
+    score: -1.5
+
+  # 资金流
+  fund_flow:
+    inflow_score: 1.5
+    outflow_score: -1.5
+
+  # 行为模式
+  behaviors:
+    short_cover:
+      pct_change_max: -3
+      net_inflow_positive: true
+      score: 1.0
+    profit_taking:
+      pct_change_min: 3
+      net_inflow_positive: false
+      score: -1.0
+    short_dominant:
+      pct_change_max: -3
+      net_inflow_positive: false
+      score: -2.0
+    long_dominant:
+      pct_change_min: 3
+      net_inflow_positive: true
+      score: 2.0
+
+# 决策规则
+decision_rules:
+  strong_buy:
+    min_integrated_score: 2.5
+    message: 偏强，建议纳入重点观察
+  strong_sell:
+    max_integrated_score: -1.5
+    message: 偏弱，建议谨慎

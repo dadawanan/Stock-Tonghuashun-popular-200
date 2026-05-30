@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +79,8 @@ async def run_analysis(session: AsyncSession, stock_codes: list[str] | None = No
     result = base_df.merge(news_result, on="stock_code", how="left").merge(market_result, on="stock_code", how="left")
     result["text_score"] = pd.to_numeric(result["text_score"], errors="coerce").fillna(0.0)
     result["market_score"] = pd.to_numeric(result["market_score"], errors="coerce").fillna(0.0)
-    result["integrated_score"] = (result["text_score"] * 0.55 + result["market_score"] * 0.45).round(2)
+    from stock_service.domain.services.analysis_rules import WEIGHTS
+    result["integrated_score"] = (result["text_score"] * WEIGHTS["text"] + result["market_score"] * WEIGHTS["market"]).round(2)
     result["decision"] = result.apply(synthesize_decision, axis=1)
     for column in ["event_types", "text_event_label", "sentiment_strength", "duration_tag", "fact_support", "bullish_logic", "bearish_logic", "price_volume_signal", "fund_flow_signal", "behavior_label"]:
         result[column] = result[column].fillna("暂无数据")
@@ -126,5 +130,5 @@ async def store_analysis_results(session: AsyncSession, results: list[dict[str, 
 async def run_and_store(session: AsyncSession, stock_codes: list[str] | None = None) -> int:
     results, meta = await run_analysis(session, stock_codes=stock_codes)
     count = await store_analysis_results(session, results, meta, run_type="analyze", source="rule")
-    print(f"[analysis] 写入 {count} 条分析结果")
+    logger.info(f"[analysis] 写入 {count} 条分析结果")
     return count

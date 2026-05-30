@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from stock_service.crud.utils import _rows_to_dicts
 from stock_service.db.models.quant_models import (
     BacktestDailyNav,
     BacktestResult,
@@ -21,10 +22,6 @@ from stock_service.db.models.quant_models import (
     TradeOrder,
 )
 from stock_service.db.models.v2_models import StockMaster
-
-
-def _rows_to_dicts(rows) -> list[dict]:
-    return [{c.name: getattr(r, c.name) for c in r.__table__.columns} for r in rows]
 
 
 # ── StockBasic ──
@@ -495,15 +492,6 @@ async def create_feedback_log(session: AsyncSession, data: dict) -> dict:
     return _rows_to_dicts([log])[0]
 
 
-async def list_feedback_logs(
-    session: AsyncSession, backtest_id: int
-) -> list[dict]:
-    result = await session.execute(
-        select(FeedbackLog)
-        .where(FeedbackLog.backtest_id == backtest_id)
-        .order_by(FeedbackLog.created_at.desc())
-    )
-    return _rows_to_dicts(result.scalars().all())
 
 
 # ── Auto-trade helpers ──
@@ -598,16 +586,23 @@ async def list_feedback_logs(
 async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
-    from sqlalchemy import text
     for row in rows:
-        await session.execute(text("""
-            INSERT INTO stock_daily (code, trade_date, open, high, low, close, volume, amount, created_at, updated_at)
-            VALUES (:code, :trade_date, :open, :high, :low, :close, :volume, :amount, NOW(), NOW())
-            ON CONFLICT (code, trade_date) DO UPDATE SET
-                open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
-                close = EXCLUDED.close, volume = EXCLUDED.volume, amount = EXCLUDED.amount,
-                updated_at = NOW()
-        """), row)
+        row.setdefault("created_at", func.now())
+        row.setdefault("updated_at", func.now())
+        stmt = pg_insert(StockDaily).values(**row)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["code", "trade_date"],
+            set_={
+                "open": stmt.excluded.open,
+                "high": stmt.excluded.high,
+                "low": stmt.excluded.low,
+                "close": stmt.excluded.close,
+                "volume": stmt.excluded.volume,
+                "amount": stmt.excluded.amount,
+                "updated_at": func.now(),
+            },
+        )
+        await session.execute(stmt)
     await session.flush()
     return len(rows)
 
@@ -615,17 +610,23 @@ async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> i
 async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
-    from sqlalchemy import text
     for row in rows:
-        await session.execute(text("""
-            INSERT INTO stock_indicator (code, trade_date, ma5, ma20, rsi, macd, boll_upper, boll_lower, created_at, updated_at)
-            VALUES (:code, :trade_date, :ma5, :ma20, :rsi, :macd, :boll_upper, :boll_lower, NOW(), NOW())
-            ON CONFLICT (code, trade_date) DO UPDATE SET
-                ma5 = EXCLUDED.ma5, ma20 = EXCLUDED.ma20,
-                rsi = EXCLUDED.rsi, macd = EXCLUDED.macd,
-                boll_upper = EXCLUDED.boll_upper, boll_lower = EXCLUDED.boll_lower,
-                updated_at = NOW()
-        """), row)
+        row.setdefault("created_at", func.now())
+        row.setdefault("updated_at", func.now())
+        stmt = pg_insert(StockIndicator).values(**row)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["code", "trade_date"],
+            set_={
+                "ma5": stmt.excluded.ma5,
+                "ma20": stmt.excluded.ma20,
+                "rsi": stmt.excluded.rsi,
+                "macd": stmt.excluded.macd,
+                "boll_upper": stmt.excluded.boll_upper,
+                "boll_lower": stmt.excluded.boll_lower,
+                "updated_at": func.now(),
+            },
+        )
+        await session.execute(stmt)
     await session.flush()
     return len(rows)
 
@@ -822,6 +823,54 @@ async def list_all_active_sim_accounts(session: AsyncSession) -> list[dict]:
         select(SimAccount).where(SimAccount.status == "active")
     )
     return _rows_to_dicts(result.scalars().all())
+
+
+
+async def get_best_trade_date_for_popularity(session: AsyncSession) -> date | None:
+    """获取人气榜股票覆盖最多的交易日（最近 7 天内）"""
+    from stock_service.db.models.v2_models import PopularitySnapshot
+    pop_sub = (
+        select(PopularitySnapshot.stock_code)
+        .where(PopularitySnapshot.trade_date == select(func.max(PopularitySnapshot.trade_date)).scalar_subquery())
+        .scalar_subquery()
+    )
+    result = await session.execute(
+        select(StockDaily.trade_date, func.count(StockDaily.code.distinct()).label("cnt"))
+        .where(StockDaily.code.in_(pop_sub))
+        .where(StockDaily.trade_date >= func.current_date() - 7)
+        .group_by(StockDaily.trade_date)
+        .order_by(func.count(StockDaily.code.distinct()).desc())
+        .limit(1)
+    )
+    row = result.first()
+    return row[0] if row else None
+
+
+async def get_missing_popularity_codes(session: AsyncSession, limit: int = 200) -> list[str]:
+    """获取人气榜中缺少近 3 天日线数据的股票代码"""
+    from stock_service.db.models.v2_models import PopularitySnapshot
+    latest_pop = select(func.max(PopularitySnapshot.trade_date)).scalar_subquery()
+    recent_codes = (
+        select(StockDaily.code.distinct())
+        .where(StockDaily.trade_date >= func.now() - 3)
+        .scalar_subquery()
+    )
+    result = await session.execute(
+        select(PopularitySnapshot.stock_code.distinct())
+        .where(PopularitySnapshot.trade_date == latest_pop)
+        .where(PopularitySnapshot.stock_code.notin_(recent_codes))
+        .order_by(PopularitySnapshot.stock_code)
+        .limit(limit)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def list_all_stock_codes(session: AsyncSession) -> list[str]:
+    """获取 stock_daily 中所有不重复的股票代码"""
+    result = await session.execute(
+        select(StockDaily.code.distinct()).order_by(StockDaily.code)
+    )
+    return [row[0] for row in result.all()]
 
 
 __all__ = [

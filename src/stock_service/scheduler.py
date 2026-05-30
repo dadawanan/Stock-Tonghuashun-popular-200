@@ -29,20 +29,7 @@ from stock_service.crud import quant_crud
 from stock_service.db.database import AsyncSessionFactory
 from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
 from stock_service.quant.application.sim_trading_engine import SimTradingEngine
-from stock_service.quant.application.strategy_engine import (
-    BreakoutStrategy,
-    FundFlowStrategy,
-    GridStrategy,
-    MeanReversionStrategy,
-    MomentumStrategy,
-    MultiFactorStrategy,
-    PopularityStrategy,
-    SentimentStrategy,
-    StrategyEngine,
-    StrategyContext,
-    TechnicalStrategy,
-    VolumePriceStrategy,
-)
+from stock_service.quant.application.strategy_engine import StrategyContext, engine as strategy_engine
 from stock_service.quant.domain.strategy_interface import Signal, SignalType
 
 logging.basicConfig(
@@ -50,19 +37,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("scheduler")
-
-# 初始化策略引擎
-strategy_engine = StrategyEngine()
-strategy_engine.register("popularity", PopularityStrategy())
-strategy_engine.register("sentiment", SentimentStrategy())
-strategy_engine.register("technical", TechnicalStrategy())
-strategy_engine.register("multi_factor", MultiFactorStrategy())
-strategy_engine.register("volume_price", VolumePriceStrategy())
-strategy_engine.register("momentum", MomentumStrategy())
-strategy_engine.register("mean_reversion", MeanReversionStrategy())
-strategy_engine.register("fund_flow", FundFlowStrategy())
-strategy_engine.register("breakout", BreakoutStrategy())
-strategy_engine.register("grid", GridStrategy())
 
 
 def is_trading_day() -> bool:
@@ -142,23 +116,10 @@ async def update_popularity_daily_data() -> None:
     """更新人气榜股票的日线数据和指标"""
     import asyncio
     import pandas as pd
-    from sqlalchemy import text
 
     try:
         async with AsyncSessionFactory() as session:
-            # 获取最新人气榜股票中缺少日线数据的
-            result = await session.execute(text("""
-                SELECT DISTINCT ps.stock_code
-                FROM popularity_snapshot ps
-                WHERE ps.trade_date = (SELECT MAX(trade_date) FROM popularity_snapshot)
-                AND ps.stock_code NOT IN (
-                    SELECT DISTINCT code FROM stock_daily
-                    WHERE trade_date >= NOW() - INTERVAL '3 days'
-                )
-                ORDER BY ps.stock_code
-                LIMIT 200
-            """))
-            codes = [row[0] for row in result.fetchall()]
+            codes = await quant_crud.get_missing_popularity_codes(session, limit=200)
 
         if not codes:
             logger.info("[daily-data] 所有人气榜股票数据已是最新")

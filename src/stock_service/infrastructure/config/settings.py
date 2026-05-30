@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 
 def _load_dotenv() -> None:
@@ -48,7 +49,6 @@ def _get_int_env(name: str, default: str) -> int:
 
 
 def _parse_db_ssl() -> bool | None:
-    """asyncpg：本机 PostgreSQL 常未开 SSL，若按客户端默认去握手易卡住直至超时。默认关闭 SSL。"""
     raw = os.getenv("DB_SSL", "disable").strip().lower()
     if raw in ("require", "true", "1", "on"):
         return True
@@ -98,40 +98,127 @@ def _resolve_db_env() -> None:
             os.environ[dst] = val
 
 
-_load_dotenv()
-_resolve_db_env()
+_initialized = False
+
+
+def _ensure_initialized() -> None:
+    """惰性初始化：首次访问时才加载 .env 并解析环境变量"""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+    _load_dotenv()
+    _resolve_db_env()
 
 
 class Settings:
-    db_host = _get_required_env("DB_HOST", "127.0.0.1")
-    db_port = _get_int_env("DB_PORT", "5432")
-    db_name = _get_required_env("DB_NAME", "stock_db")
-    db_user = _get_required_env("DB_USER", "postgres")
-    db_password = _get_required_env("DB_PASSWORD", "")
-    db_ssl = _parse_db_ssl()
-    db_connect_timeout = _get_int_env("DB_CONNECT_TIMEOUT", "90")
-    ths_query = _get_required_env("THS_POPULARITY_QUERY", "人气排名前200")
-    ths_cookie = os.getenv("THS_COOKIE", "").strip()
-    jwt_secret_key = _get_required_env("JWT_SECRET_KEY", "change-me-in-production")
-    jwt_access_expire_minutes = _get_int_env("JWT_ACCESS_EXPIRE_MINUTES", "30")
-    jwt_refresh_expire_days = _get_int_env("JWT_REFRESH_EXPIRE_DAYS", "7")
-    jwt_refresh_cookie_name = _get_required_env("JWT_REFRESH_COOKIE_NAME", "stock_refresh_token")
-    cookie_secure = _get_bool_env("COOKIE_SECURE", "false")
-    cookie_samesite = _get_samesite_env("COOKIE_SAMESITE", "lax")
-    market_quote_providers = _get_csv_env("MARKET_QUOTE_PROVIDERS", "tencent")
-    market_fetch_concurrency = _get_int_env("MARKET_FETCH_CONCURRENCY", "5")
-    news_fetch_concurrency = _get_int_env("NEWS_FETCH_CONCURRENCY", "5")
+    """惰性 Settings：属性首次被访问时才读取环境变量"""
+
+    def __init__(self) -> None:
+        self._cache: dict[str, object] = {}
+
+    def _get(self, key: str, loader) -> object:
+        if key not in self._cache:
+            _ensure_initialized()
+            self._cache[key] = loader()
+        return self._cache[key]
+
+    @property
+    def db_host(self) -> str:
+        return self._get("db_host", lambda: _get_required_env("DB_HOST", "127.0.0.1"))  # type: ignore[return-value]
+
+    @property
+    def db_port(self) -> int:
+        return self._get("db_port", lambda: _get_int_env("DB_PORT", "5432"))  # type: ignore[return-value]
+
+    @property
+    def db_name(self) -> str:
+        return self._get("db_name", lambda: _get_required_env("DB_NAME", "stock_db"))  # type: ignore[return-value]
+
+    @property
+    def db_user(self) -> str:
+        return self._get("db_user", lambda: _get_required_env("DB_USER", "postgres"))  # type: ignore[return-value]
+
+    @property
+    def db_password(self) -> str:
+        return self._get("db_password", lambda: _get_required_env("DB_PASSWORD", ""))  # type: ignore[return-value]
+
+    @property
+    def db_ssl(self) -> bool | None:
+        return self._get("db_ssl", _parse_db_ssl)  # type: ignore[return-value]
+
+    @property
+    def db_connect_timeout(self) -> int:
+        return self._get("db_connect_timeout", lambda: _get_int_env("DB_CONNECT_TIMEOUT", "90"))  # type: ignore[return-value]
+
+    @property
+    def ths_query(self) -> str:
+        return self._get("ths_query", lambda: _get_required_env("THS_POPULARITY_QUERY", "人气排名前200"))  # type: ignore[return-value]
+
+    @property
+    def ths_cookie(self) -> str:
+        return self._get("ths_cookie", lambda: os.getenv("THS_COOKIE", "").strip())  # type: ignore[return-value]
+
+    @property
+    def jwt_secret_key(self) -> str:
+        return self._get("jwt_secret_key", lambda: _get_required_env("JWT_SECRET_KEY", "change-me-in-production"))  # type: ignore[return-value]
+
+    @property
+    def jwt_access_expire_minutes(self) -> int:
+        return self._get("jwt_access_expire_minutes", lambda: _get_int_env("JWT_ACCESS_EXPIRE_MINUTES", "30"))  # type: ignore[return-value]
+
+    @property
+    def jwt_refresh_expire_days(self) -> int:
+        return self._get("jwt_refresh_expire_days", lambda: _get_int_env("JWT_REFRESH_EXPIRE_DAYS", "7"))  # type: ignore[return-value]
+
+    @property
+    def jwt_refresh_cookie_name(self) -> str:
+        return self._get("jwt_refresh_cookie_name", lambda: _get_required_env("JWT_REFRESH_COOKIE_NAME", "stock_refresh_token"))  # type: ignore[return-value]
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self._get("cookie_secure", lambda: _get_bool_env("COOKIE_SECURE", "false"))  # type: ignore[return-value]
+
+    @property
+    def cookie_samesite(self) -> str:
+        return self._get("cookie_samesite", lambda: _get_samesite_env("COOKIE_SAMESITE", "lax"))  # type: ignore[return-value]
+
+    @property
+    def market_quote_providers(self) -> tuple[str, ...]:
+        return self._get("market_quote_providers", lambda: _get_csv_env("MARKET_QUOTE_PROVIDERS", "tencent"))  # type: ignore[return-value]
+
+    @property
+    def market_fetch_concurrency(self) -> int:
+        return self._get("market_fetch_concurrency", lambda: _get_int_env("MARKET_FETCH_CONCURRENCY", "5"))  # type: ignore[return-value]
+
+    @property
+    def news_fetch_concurrency(self) -> int:
+        return self._get("news_fetch_concurrency", lambda: _get_int_env("NEWS_FETCH_CONCURRENCY", "5"))  # type: ignore[return-value]
 
 
 settings = Settings()
 
 
-DATABASE_CONFIG = {
-    "host": settings.db_host,
-    "port": settings.db_port,
-    "database": settings.db_name,
-    "user": settings.db_user,
-    "password": settings.db_password,
-    "ssl": settings.db_ssl,
-    "timeout": float(settings.db_connect_timeout),
-}
+def get_database_config() -> dict:
+    """惰性获取数据库配置（首次调用时才读取环境变量）"""
+    return {
+        "host": settings.db_host,
+        "port": settings.db_port,
+        "database": settings.db_name,
+        "user": settings.db_user,
+        "password": settings.db_password,
+        "ssl": settings.db_ssl,
+        "timeout": float(settings.db_connect_timeout),
+    }
+
+
+# 兼容旧代码：模块级别变量，但延迟求值
+class _LazyConfig:
+    def __getitem__(self, key: str) -> Any:
+        return get_database_config()[key]
+    def get(self, key: str, default: Any = None) -> Any:
+        return get_database_config().get(key, default)
+    def __repr__(self) -> str:
+        return repr(get_database_config())
+
+DATABASE_CONFIG = _LazyConfig()

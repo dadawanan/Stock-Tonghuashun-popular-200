@@ -179,7 +179,7 @@ async def get_trade_analysis(
                         bt = datetime.fromisoformat(buy_time.replace("Z", "+00:00"))
                         st = datetime.fromisoformat(sell_time.replace("Z", "+00:00"))
                         holding_days.append((st - bt).days)
-                    except:
+                    except (ValueError, TypeError):
                         pass
                 break
 

@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("stock-api")
 
 # 从环境变量读取允许的前端域名，支持多个域名（逗号分隔）
 # 示例: ALLOWED_ORIGINS=http://localhost:8001,http://101.35.255.200:8001
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8001,http://101.35.255.200:8001")
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8001")
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
 
 logger.info(f"允许的前端域名: {allowed_origins}")
@@ -31,18 +31,24 @@ logger.info(f"允许的前端域名: {allowed_origins}")
 app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """统一 HTTPException 响应格式为 ApiResponse 结构"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.status_code, "msg": str(exc.detail), "data": None},
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """捕获所有未处理的异常，返回详细的错误信息而非通用的 Internal Server Error"""
+    """捕获所有未处理的异常。dev 环境返回 traceback，prod 只返回错误消息。"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={
-            "code": -1,
-            "msg": str(exc),
-            "detail": traceback.format_exc(),
-        },
-    )
+    is_dev = os.getenv("APP_ENV", "prod").strip().lower() == "dev"
+    content: dict = {"code": -1, "msg": str(exc)}
+    if is_dev:
+        content["detail"] = traceback.format_exc()
+    return JSONResponse(status_code=500, content=content)
 
 # 配置 CORS 中间件
 app.add_middleware(
