@@ -404,6 +404,10 @@ export default function StrategiesPage() {
   const [selectedStrategyIds, setSelectedStrategyIds] = useState<number[]>([]);
   const [maxStocks, setMaxStocks] = useState(50);
 
+  // Data maintenance
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [indicatorLoading, setIndicatorLoading] = useState(false);
+
   const loadStrategies = async () => {
     setLoading(true);
     try {
@@ -501,6 +505,30 @@ export default function StrategiesPage() {
     }
   };
 
+  const handleBackfill = async () => {
+    setBackfillLoading(true);
+    try {
+      await quantApi.backfillDaily();
+      message.success("日线数据补全完成");
+    } catch (e: any) {
+      message.error(e?.message || "补全日线数据失败");
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
+  const handleComputeIndicators = async () => {
+    setIndicatorLoading(true);
+    try {
+      const result = await quantApi.computeIndicators();
+      message.success(`技术指标计算完成，处理了 ${result.computed} 只股票`);
+    } catch (e: any) {
+      message.error(e?.message || "计算指标失败");
+    } finally {
+      setIndicatorLoading(false);
+    }
+  };
+
   const columns: ColumnsType<Strategy> = [
     { title: "名称", dataIndex: "name", width: 150 },
     {
@@ -559,6 +587,12 @@ export default function StrategiesPage() {
       <div className={styles.pageHeader}>
         <Title level={3} className={styles.pageTitle}>策略管理</Title>
         <Space>
+          <Button loading={backfillLoading} onClick={handleBackfill}>
+            补全数据
+          </Button>
+          <Button loading={indicatorLoading} onClick={handleComputeIndicators}>
+            计算指标
+          </Button>
           <Button onClick={() => setPreviewOpen(true)}>
             信号预览
           </Button>

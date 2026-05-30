@@ -269,6 +269,13 @@ export const quantApi = {
   previewSignals: (data?: { strategy_ids?: number[]; max_stocks?: number }) =>
     http.post<any>('/api/quant/strategies/signals/preview', data || {}),
 
+  // Data maintenance
+  backfillDaily: () =>
+    http.post<{ message: string }>('/api/quant/daily/backfill'),
+
+  computeIndicators: () =>
+    http.post<{ computed: number }>('/api/quant/indicators/compute'),
+
   // Backtest
   runBacktest: (data: {
     strategy_id: number;
