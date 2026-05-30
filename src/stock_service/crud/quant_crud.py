@@ -495,15 +495,6 @@ async def create_feedback_log(session: AsyncSession, data: dict) -> dict:
     return _rows_to_dicts([log])[0]
 
 
-async def list_feedback_logs(
-    session: AsyncSession, backtest_id: int
-) -> list[dict]:
-    result = await session.execute(
-        select(FeedbackLog)
-        .where(FeedbackLog.backtest_id == backtest_id)
-        .order_by(FeedbackLog.created_at.desc())
-    )
-    return _rows_to_dicts(result.scalars().all())
 
 
 # ── Auto-trade helpers ──
