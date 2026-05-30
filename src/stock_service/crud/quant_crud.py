@@ -598,23 +598,16 @@ async def list_feedback_logs(
 async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
+    from sqlalchemy import text
     for row in rows:
-        row.setdefault("created_at", func.now())
-        row.setdefault("updated_at", func.now())
-        stmt = pg_insert(StockDaily).values(**row)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_stock_daily_code_date",
-            set_={
-                "open": stmt.excluded.open,
-                "high": stmt.excluded.high,
-                "low": stmt.excluded.low,
-                "close": stmt.excluded.close,
-                "volume": stmt.excluded.volume,
-                "amount": stmt.excluded.amount,
-                "updated_at": func.now(),
-            },
-        )
-        await session.execute(stmt)
+        await session.execute(text("""
+            INSERT INTO stock_daily (code, trade_date, open, high, low, close, volume, amount, created_at, updated_at)
+            VALUES (:code, :trade_date, :open, :high, :low, :close, :volume, :amount, NOW(), NOW())
+            ON CONFLICT (code, trade_date) DO UPDATE SET
+                open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
+                close = EXCLUDED.close, volume = EXCLUDED.volume, amount = EXCLUDED.amount,
+                updated_at = NOW()
+        """), row)
     await session.flush()
     return len(rows)
 
@@ -622,21 +615,16 @@ async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> i
 async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
+    from sqlalchemy import text
     for row in rows:
-        row.setdefault("created_at", func.now())
-        row.setdefault("updated_at", func.now())
-        stmt = pg_insert(StockIndicator).values(**row)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_stock_indicator_code_date",
-            set_={
-                "ma5": stmt.excluded.ma5,
-                "ma20": stmt.excluded.ma20,
-                "rsi": stmt.excluded.rsi,
-                "macd": stmt.excluded.macd,
-                "updated_at": func.now(),
-            },
-        )
-        await session.execute(stmt)
+        await session.execute(text("""
+            INSERT INTO stock_indicator (code, trade_date, ma5, ma20, rsi, macd, created_at, updated_at)
+            VALUES (:code, :trade_date, :ma5, :ma20, :rsi, :macd, NOW(), NOW())
+            ON CONFLICT (code, trade_date) DO UPDATE SET
+                ma5 = EXCLUDED.ma5, ma20 = EXCLUDED.ma20,
+                rsi = EXCLUDED.rsi, macd = EXCLUDED.macd,
+                updated_at = NOW()
+        """), row)
     await session.flush()
     return len(rows)
 
