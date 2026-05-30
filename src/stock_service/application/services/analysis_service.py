@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,5 +129,5 @@ async def store_analysis_results(session: AsyncSession, results: list[dict[str, 
 async def run_and_store(session: AsyncSession, stock_codes: list[str] | None = None) -> int:
     results, meta = await run_analysis(session, stock_codes=stock_codes)
     count = await store_analysis_results(session, results, meta, run_type="analyze", source="rule")
-    print(f"[analysis] 写入 {count} 条分析结果")
+    logger.info(f"[analysis] 写入 {count} 条分析结果")
     return count

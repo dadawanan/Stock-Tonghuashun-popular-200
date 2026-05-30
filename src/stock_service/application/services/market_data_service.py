@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 import pandas as pd
@@ -96,15 +99,15 @@ async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_i
             consecutive_failures = 0
         except Exception as exc:
             consecutive_failures += 1
-            print(f"[news] {row['stock_code']} 获取失败({consecutive_failures}): {exc}")
+            logger.warning(f"[news] {row['stock_code']} 获取失败({consecutive_failures}): {exc}")
             if consecutive_failures >= 3:
-                print(f"[news] 连续失败 {consecutive_failures} 次，停止获取")
+                logger.error(f"[news] 连续失败 {consecutive_failures} 次，停止获取")
                 break
 
     if not news_rows:
         return 0
     inserted = await v2_crud.insert_news_batch(session, news_rows)
-    print(f"[news] 写入 {inserted} 条新闻记录 (跳过 {len(news_rows) - inserted} 条重复)")
+    logger.info(f"[news] 写入 {inserted} 条新闻记录 (跳过 {len(news_rows) - inserted} 条重复)")
     return inserted
 
 
@@ -135,7 +138,7 @@ async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_lates
                     }
                 )
             except Exception as exc:
-                print(f"[market] {stock_code} 实时行情接口失败: {_format_fetch_error(exc)}")
+                logger.warning(f"[market] {stock_code} 实时行情接口失败: {_format_fetch_error(exc)}")
             if quote["latest_price"] is None and not pd.isna(source_latest_price):
                 quote["latest_price"] = float(source_latest_price)
             if quote["pct_change"] is None and not pd.isna(source_pct_change):
@@ -143,7 +146,7 @@ async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_lates
             try:
                 fund_flow = fetch_latest_fund_flow(stock_code)
             except Exception as exc:
-                print(f"[market] {stock_code} 资金流获取失败: {_format_fetch_error(exc)}")
+                logger.warning(f"[market] {stock_code} 资金流获取失败: {_format_fetch_error(exc)}")
                 fund_flow = {
                     "flow_date": None,
                     "main_net_inflow": 0.0,
@@ -195,15 +198,15 @@ async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run
             consecutive_failures = 0
         except Exception as exc:
             consecutive_failures += 1
-            print(f"[market] {row['stock_code']} 获取失败({consecutive_failures}): {exc}")
+            logger.warning(f"[market] {row['stock_code']} 获取失败({consecutive_failures}): {exc}")
             if consecutive_failures >= 3:
-                print(f"[market] 连续失败 {consecutive_failures} 次，停止获取")
+                logger.error(f"[market] 连续失败 {consecutive_failures} 次，停止获取")
                 break
 
     if not market_rows:
         return 0
     await v2_crud.insert_market_batch(session, market_rows)
-    print(f"[market] 写入 {len(market_rows)} 条行情记录")
+    logger.info(f"[market] 写入 {len(market_rows)} 条行情记录")
     return len(market_rows)
 
 
@@ -247,7 +250,7 @@ async def compute_and_store_indicators(session: AsyncSession, stock_codes: list[
         total += 1
 
     await session.flush()
-    print(f"[indicators] 计算了 {total} 只股票的技术指标")
+    logger.info(f"[indicators] 计算了 {total} 只股票的技术指标")
     return total
 
 
