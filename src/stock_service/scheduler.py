@@ -170,6 +170,7 @@ async def update_popularity_daily_data() -> None:
         start_date = end_date - timedelta(days=365)
 
         total_rows = 0
+        consecutive_failures = 0
         for code in codes:
             try:
                 from stock_service.infrastructure.providers.tencent_provider import fetch_kline_tx
@@ -188,21 +189,18 @@ async def update_popularity_daily_data() -> None:
                     row["amount"] = 0
 
                 async with AsyncSessionFactory() as session:
-                    for row in records:
-                        await session.execute(text("""
-                            INSERT INTO stock_daily (code, trade_date, open, high, low, close, volume, amount, created_at, updated_at)
-                            VALUES (:code, :trade_date, :open, :high, :low, :close, :volume, :amount, NOW(), NOW())
-                            ON CONFLICT (code, trade_date) DO UPDATE SET
-                                open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
-                                close = EXCLUDED.close, volume = EXCLUDED.volume, amount = EXCLUDED.amount,
-                                updated_at = NOW()
-                        """), row)
+                    await quant_crud.batch_upsert_stock_daily(session, records)
                     await session.commit()
 
                 total_rows += len(records)
+                consecutive_failures = 0
                 await asyncio.sleep(0.3)
             except Exception as e:
-                logger.warning(f"[daily-data] {code} 失败: {e}")
+                consecutive_failures += 1
+                logger.warning(f"[daily-data] {code} 失败({consecutive_failures}): {e}")
+                if consecutive_failures >= 3:
+                    logger.error(f"[daily-data] 连续失败 {consecutive_failures} 次，停止执行")
+                    break
 
         logger.info(f"[daily-data] 完成: {total_rows} 行数据")
 

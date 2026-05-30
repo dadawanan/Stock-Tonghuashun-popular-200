@@ -599,6 +599,8 @@ async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> i
     if not rows:
         return 0
     for row in rows:
+        row.setdefault("created_at", func.now())
+        row.setdefault("updated_at", func.now())
         stmt = pg_insert(StockDaily).values(**row)
         stmt = stmt.on_conflict_do_update(
             constraint="uq_stock_daily_code_date",
@@ -621,6 +623,8 @@ async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) 
     if not rows:
         return 0
     for row in rows:
+        row.setdefault("created_at", func.now())
+        row.setdefault("updated_at", func.now())
         stmt = pg_insert(StockIndicator).values(**row)
         stmt = stmt.on_conflict_do_update(
             constraint="uq_stock_indicator_code_date",
