@@ -106,3 +106,17 @@ async def api_compute_indicators(
     except Exception as exc:
         logger.exception("计算指标失败")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/api/quant/daily/backfill", response_model=ApiResponse)
+async def api_backfill_daily(
+    current_user: dict = Depends(get_current_user),
+) -> ApiResponse:
+    """手动触发人气榜股票的日线数据补全（从腾讯行情拉取最近一年 K 线）"""
+    from stock_service.scheduler import update_popularity_daily_data
+    try:
+        await update_popularity_daily_data()
+        return ApiResponse(code=0, msg="ok", data={"message": "日线数据补全任务已执行，请查看服务端日志"})
+    except Exception as exc:
+        logger.exception("补全日线数据失败")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

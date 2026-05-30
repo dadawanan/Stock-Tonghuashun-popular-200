@@ -156,7 +156,7 @@ async def update_popularity_daily_data() -> None:
                     WHERE trade_date >= NOW() - INTERVAL '3 days'
                 )
                 ORDER BY ps.stock_code
-                LIMIT 50
+                LIMIT 200
             """))
             codes = [row[0] for row in result.fetchall()]
 
