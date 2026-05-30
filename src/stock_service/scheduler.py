@@ -29,20 +29,7 @@ from stock_service.crud import quant_crud
 from stock_service.db.database import AsyncSessionFactory
 from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
 from stock_service.quant.application.sim_trading_engine import SimTradingEngine
-from stock_service.quant.application.strategy_engine import (
-    BreakoutStrategy,
-    FundFlowStrategy,
-    GridStrategy,
-    MeanReversionStrategy,
-    MomentumStrategy,
-    MultiFactorStrategy,
-    PopularityStrategy,
-    SentimentStrategy,
-    StrategyEngine,
-    StrategyContext,
-    TechnicalStrategy,
-    VolumePriceStrategy,
-)
+from stock_service.quant.application.strategy_engine import StrategyContext, engine as strategy_engine
 from stock_service.quant.domain.strategy_interface import Signal, SignalType
 
 logging.basicConfig(
@@ -50,19 +37,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("scheduler")
-
-# 初始化策略引擎
-strategy_engine = StrategyEngine()
-strategy_engine.register("popularity", PopularityStrategy())
-strategy_engine.register("sentiment", SentimentStrategy())
-strategy_engine.register("technical", TechnicalStrategy())
-strategy_engine.register("multi_factor", MultiFactorStrategy())
-strategy_engine.register("volume_price", VolumePriceStrategy())
-strategy_engine.register("momentum", MomentumStrategy())
-strategy_engine.register("mean_reversion", MeanReversionStrategy())
-strategy_engine.register("fund_flow", FundFlowStrategy())
-strategy_engine.register("breakout", BreakoutStrategy())
-strategy_engine.register("grid", GridStrategy())
 
 
 def is_trading_day() -> bool:

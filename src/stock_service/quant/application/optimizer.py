@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import quant_crud
 from stock_service.quant.application.backtest_engine import BacktestEngine
-from stock_service.quant.application.strategy_engine import StrategyEngine
+from stock_service.quant.application.strategy_engine import engine as _default_engine
 from stock_service.quant.domain.backtest_rules import BacktestConfig
 
 logger = logging.getLogger(__name__)
@@ -60,15 +60,7 @@ class ParameterOptimizer:
         if config is None:
             config = BacktestConfig()
         if strategy_engine is None:
-            from stock_service.quant.application.strategy_engine import (
-                MultiFactorStrategy, PopularityStrategy,
-                SentimentStrategy, TechnicalStrategy,
-            )
-            strategy_engine = StrategyEngine()
-            strategy_engine.register("popularity", PopularityStrategy())
-            strategy_engine.register("sentiment", SentimentStrategy())
-            strategy_engine.register("technical", TechnicalStrategy())
-            strategy_engine.register("multi_factor", MultiFactorStrategy())
+            strategy_engine = _default_engine
 
         # Get strategy info
         strategy = await quant_crud.get_strategy(self._session, strategy_id)
