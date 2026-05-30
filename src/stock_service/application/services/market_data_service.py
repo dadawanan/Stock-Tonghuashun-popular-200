@@ -86,17 +86,21 @@ async def _fetch_one_stock_news(stock_code: str, stock_name: str, run_id: int, m
 
 
 async def fetch_news_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int, max_news_per_stock: int = 20) -> int:
-    tasks = [
-        _fetch_one_stock_news(row["stock_code"], row["stock_name"], run_id, max_news_per_stock)
-        for _, row in stocks_df.iterrows()
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
     news_rows: list[dict[str, Any]] = []
-    for result, (_, stock_row) in zip(results, stocks_df.iterrows()):
-        if isinstance(result, Exception):
-            print(f"[news] {stock_row['stock_code']} 获取失败: {result}")
-        else:
-            news_rows.extend(result)
+    consecutive_failures = 0
+
+    for _, row in stocks_df.iterrows():
+        try:
+            items = await _fetch_one_stock_news(row["stock_code"], row["stock_name"], run_id, max_news_per_stock)
+            news_rows.extend(items)
+            consecutive_failures = 0
+        except Exception as exc:
+            consecutive_failures += 1
+            print(f"[news] {row['stock_code']} 获取失败({consecutive_failures}): {exc}")
+            if consecutive_failures >= 3:
+                print(f"[news] 连续失败 {consecutive_failures} 次，停止获取")
+                break
+
     if not news_rows:
         return 0
     inserted = await v2_crud.insert_news_batch(session, news_rows)
@@ -174,24 +178,28 @@ async def _fetch_one_stock_market(stock_code: str, stock_name: str, source_lates
 
 
 async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run_id: int) -> int:
-    tasks = [
-        _fetch_one_stock_market(
-            row["stock_code"], row["stock_name"],
-            pd.to_numeric(row.get("source_latest_price"), errors="coerce"),
-            pd.to_numeric(row.get("source_pct_change"), errors="coerce"),
-        )
-        for _, row in stocks_df.iterrows()
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
     now = pd.Timestamp.now(tz="Asia/Shanghai").to_pydatetime()
     market_rows: list[dict[str, Any]] = []
-    for result, (_, stock_row) in zip(results, stocks_df.iterrows()):
-        if isinstance(result, Exception):
-            print(f"[market] {stock_row['stock_code']} 获取失败: {result}")
-        else:
+    consecutive_failures = 0
+
+    for _, row in stocks_df.iterrows():
+        try:
+            result = await _fetch_one_stock_market(
+                row["stock_code"], row["stock_name"],
+                pd.to_numeric(row.get("source_latest_price"), errors="coerce"),
+                pd.to_numeric(row.get("source_pct_change"), errors="coerce"),
+            )
             result["run_id"] = run_id
             result["snapshot_time"] = now
             market_rows.append(result)
+            consecutive_failures = 0
+        except Exception as exc:
+            consecutive_failures += 1
+            print(f"[market] {row['stock_code']} 获取失败({consecutive_failures}): {exc}")
+            if consecutive_failures >= 3:
+                print(f"[market] 连续失败 {consecutive_failures} 次，停止获取")
+                break
+
     if not market_rows:
         return 0
     await v2_crud.insert_market_batch(session, market_rows)
