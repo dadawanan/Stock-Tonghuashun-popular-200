@@ -208,18 +208,13 @@ async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run
 
 
 async def compute_and_store_indicators(session: AsyncSession, stock_codes: list[str] | None = None) -> int:
-    """从 stock_daily 计算技术指标（ma5/ma20/rsi/macd）并写入 stock_indicator 表"""
-    from sqlalchemy import text
-
+    """从 stock_daily 计算技术指标（ma5/ma20/rsi/macd/boll）并写入 stock_indicator 表"""
     from stock_service.crud import quant_crud
     from stock_service.quant.domain.indicators import TechnicalIndicators
 
     # 获取有 stock_daily 数据的股票
     if not stock_codes:
-        result = await session.execute(text(
-            "SELECT DISTINCT code FROM stock_daily ORDER BY code"
-        ))
-        stock_codes = [row[0] for row in result.fetchall()]
+        stock_codes = await quant_crud.list_all_stock_codes(session)
 
     total = 0
     for code in stock_codes:

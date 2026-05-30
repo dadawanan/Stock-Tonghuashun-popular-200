@@ -107,23 +107,7 @@ async def preview_signals(
         raise HTTPException(400, "没有人气榜数据，请先运行人气榜采集")
 
     # 使用人气榜股票覆盖最多的交易日（而非全局最新，可能只有少量数据）
-    from sqlalchemy import func, select, text
-    from stock_service.db.models.quant_models import StockDaily
-
-    latest_date_row = await session.execute(text("""
-        SELECT sd.trade_date, COUNT(DISTINCT sd.code) as cnt
-        FROM stock_daily sd
-        WHERE sd.code IN (
-            SELECT stock_code FROM popularity_snapshot
-            WHERE trade_date = (SELECT MAX(trade_date) FROM popularity_snapshot)
-        )
-        AND sd.trade_date >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY sd.trade_date
-        ORDER BY cnt DESC
-        LIMIT 1
-    """))
-    row = latest_date_row.first()
-    trade_date = row[0] if row else None
+    trade_date = await quant_crud.get_best_trade_date_for_popularity(session)
     if not trade_date:
         raise HTTPException(400, "没有行情数据，请先运行数据补全")
 

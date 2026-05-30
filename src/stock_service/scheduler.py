@@ -142,23 +142,10 @@ async def update_popularity_daily_data() -> None:
     """更新人气榜股票的日线数据和指标"""
     import asyncio
     import pandas as pd
-    from sqlalchemy import text
 
     try:
         async with AsyncSessionFactory() as session:
-            # 获取最新人气榜股票中缺少日线数据的
-            result = await session.execute(text("""
-                SELECT DISTINCT ps.stock_code
-                FROM popularity_snapshot ps
-                WHERE ps.trade_date = (SELECT MAX(trade_date) FROM popularity_snapshot)
-                AND ps.stock_code NOT IN (
-                    SELECT DISTINCT code FROM stock_daily
-                    WHERE trade_date >= NOW() - INTERVAL '3 days'
-                )
-                ORDER BY ps.stock_code
-                LIMIT 200
-            """))
-            codes = [row[0] for row in result.fetchall()]
+            codes = await quant_crud.get_missing_popularity_codes(session, limit=200)
 
         if not codes:
             logger.info("[daily-data] 所有人气榜股票数据已是最新")
