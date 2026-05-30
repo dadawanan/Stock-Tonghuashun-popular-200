@@ -20,7 +20,7 @@ from stock_service.infrastructure.providers.market_data_hub import (
     fetch_news_rows,
     fetch_quote,
 )
-from stock_service.infrastructure.providers.stock_code import normalize_stock_code
+from stock_service.domain.services.stock_utils import normalize_stock_code
 
 _MARKET_FETCH_SEM = asyncio.Semaphore(settings.market_fetch_concurrency)
 _NEWS_FETCH_SEM = asyncio.Semaphore(settings.news_fetch_concurrency)

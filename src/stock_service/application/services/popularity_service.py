@@ -6,7 +6,7 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import v2_crud
-from stock_service.infrastructure.providers.stock_code import normalize_stock_code
+from stock_service.domain.services.stock_utils import normalize_stock_code
 from stock_service.infrastructure.providers.ths_provider import fetch_top_200_popularity
 
 

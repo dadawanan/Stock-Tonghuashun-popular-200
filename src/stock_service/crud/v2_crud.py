@@ -14,7 +14,7 @@ from stock_service.db.models.v2_models import (
     StockAnalysisSnapshot,
     StockMaster,
 )
-from stock_service.infrastructure.providers.stock_code import normalize_stock_code
+from stock_service.domain.services.stock_utils import normalize_stock_code
 
 _STOCK_MASTER_FIELDS = {c.name for c in StockMaster.__table__.columns}
 
