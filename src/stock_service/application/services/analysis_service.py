@@ -79,7 +79,8 @@ async def run_analysis(session: AsyncSession, stock_codes: list[str] | None = No
     result = base_df.merge(news_result, on="stock_code", how="left").merge(market_result, on="stock_code", how="left")
     result["text_score"] = pd.to_numeric(result["text_score"], errors="coerce").fillna(0.0)
     result["market_score"] = pd.to_numeric(result["market_score"], errors="coerce").fillna(0.0)
-    result["integrated_score"] = (result["text_score"] * 0.55 + result["market_score"] * 0.45).round(2)
+    from stock_service.domain.services.analysis_rules import WEIGHTS
+    result["integrated_score"] = (result["text_score"] * WEIGHTS["text"] + result["market_score"] * WEIGHTS["market"]).round(2)
     result["decision"] = result.apply(synthesize_decision, axis=1)
     for column in ["event_types", "text_event_label", "sentiment_strength", "duration_tag", "fact_support", "bullish_logic", "bearish_logic", "price_volume_signal", "fund_flow_signal", "behavior_label"]:
         result[column] = result[column].fillna("暂无数据")

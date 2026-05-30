@@ -1,59 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
+import yaml
 
 from stock_service.domain.services.stock_utils import normalize_stock_code
 
 
-EVENT_PATTERNS: dict[str, dict[str, object]] = {
-    "major_order": {
-        "keywords": ["中标", "大单", "订单", "签约", "拿下项目", "合作框架"],
-        "event_label": "利好",
-        "event_score": 2.0,
-        "bullish_logic": "订单或合同提升收入预期，说明业务拓展被市场验证。",
-        "bearish_logic": "若订单兑现周期过长，短期业绩和现金流未必立刻改善。",
-    },
-    "policy_support": {
-        "keywords": ["政策支持", "补贴", "纳入目录", "战略合作", "产业扶持"],
-        "event_label": "利好",
-        "event_score": 1.5,
-        "bullish_logic": "政策或产业资源倾斜有利于估值抬升。",
-        "bearish_logic": "政策催化若缺少基本面落地，容易变成情绪交易。",
-    },
-    "earnings_growth": {
-        "keywords": ["业绩增长", "净利润增长", "扭亏", "预增", "超预期"],
-        "event_label": "利好",
-        "event_score": 2.0,
-        "bullish_logic": "财务指标改善通常更容易获得持续性资金认可。",
-        "bearish_logic": "若增长来自非经常性收益，持续性会被打折。",
-    },
-    "technology_breakthrough": {
-        "keywords": ["新品发布", "技术突破", "专利", "量产", "发布会"],
-        "event_label": "中性偏多",
-        "event_score": 1.0,
-        "bullish_logic": "技术领先可能打开新市场空间。",
-        "bearish_logic": "研发投入和商业化周期可能压制短期利润。",
-    },
-    "management_risk": {
-        "keywords": ["被查", "调查", "立案", "违规", "诉讼", "减持"],
-        "event_label": "利空",
-        "event_score": -2.0,
-        "bullish_logic": "若风险已被充分定价，后续可能迎来情绪修复。",
-        "bearish_logic": "治理风险会削弱市场信任并压制估值。",
-    },
-    "supply_chain_risk": {
-        "keywords": ["火灾", "停产", "事故", "召回", "供应中断", "断供"],
-        "event_label": "利空",
-        "event_score": -1.5,
-        "bullish_logic": "若影响范围有限，错杀后可能出现修复。",
-        "bearish_logic": "供应链扰动可能传导到产能、交付和盈利。",
-    },
-}
-POSITIVE_WORDS = ["增长", "提升", "超预期", "创新高", "强劲", "加速", "回暖", "改善"]
-NEGATIVE_WORDS = ["下滑", "亏损", "承压", "风险", "恶化", "减值", "滞涨", "波动"]
+# ── 加载配置 ──
+
+_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "analysis_rules.yaml"
+
+with open(_CONFIG_PATH, encoding="utf-8") as f:
+    _CONFIG = yaml.safe_load(f)
+
+# 从配置中读取
+WEIGHTS = _CONFIG["weights"]
+POSITIVE_WORDS: list[str] = _CONFIG["positive_words"]
+NEGATIVE_WORDS: list[str] = _CONFIG["negative_words"]
+KEYWORD_HIT_SCORE: float = _CONFIG["keyword_hit_score"]
+SENTIMENT_THRESHOLDS = _CONFIG["sentiment_thresholds"]
+DURATION_KEYWORDS: list[str] = _CONFIG["duration_keywords"]
+FACT_SUPPORT_KEYWORDS: list[str] = _CONFIG["fact_support_keywords"]
+EVENT_PATTERNS: dict[str, dict] = _CONFIG["event_patterns"]
+MARKET_BEHAVIOR = _CONFIG["market_behavior"]
+DECISION_RULES = _CONFIG["decision_rules"]
 
 
 @dataclass
@@ -85,19 +59,19 @@ def analyze_text_event(text: str) -> EventAnalysis:
             break
     positive_hits = sum(keyword in text for keyword in POSITIVE_WORDS)
     negative_hits = sum(keyword in text for keyword in NEGATIVE_WORDS)
-    sentiment_score = event_score + positive_hits * 0.4 - negative_hits * 0.4
-    if sentiment_score >= 1.8:
+    sentiment_score = event_score + positive_hits * KEYWORD_HIT_SCORE - negative_hits * KEYWORD_HIT_SCORE
+    if sentiment_score >= SENTIMENT_THRESHOLDS["strong_positive"]:
         sentiment_strength = "强"
-    elif sentiment_score >= 0.6:
+    elif sentiment_score >= SENTIMENT_THRESHOLDS["medium_positive"]:
         sentiment_strength = "中"
-    elif sentiment_score <= -1.8:
+    elif sentiment_score <= SENTIMENT_THRESHOLDS["strong_negative"]:
         sentiment_strength = "强"
-    elif sentiment_score <= -0.6:
+    elif sentiment_score <= SENTIMENT_THRESHOLDS["medium_negative"]:
         sentiment_strength = "中"
     else:
         sentiment_strength = "弱"
-    duration_tag = "长期" if any(word in text for word in ["战略", "产能", "订单", "业绩", "量产"]) else "短期"
-    fact_support = "较强" if any(word in text for word in ["公告", "财报", "中标", "合同", "数据"]) else "一般"
+    duration_tag = "长期" if any(word in text for word in DURATION_KEYWORDS) else "短期"
+    fact_support = "较强" if any(word in text for word in FACT_SUPPORT_KEYWORDS) else "一般"
     return EventAnalysis(
         event_type=event_type,
         event_label=event_label,
@@ -216,6 +190,8 @@ def analyze_market_behavior(market_df: pd.DataFrame) -> pd.DataFrame:
     work_df["stock_code"] = work_df["stock_code"].map(normalize_stock_code)
     for column in ["pct_change", "volume_ratio", "turnover_rate", "amplitude", "main_net_inflow", "relative_strength_vs_index"]:
         work_df[column] = pd.to_numeric(work_df[column], errors="coerce")
+
+    cfg = MARKET_BEHAVIOR
     rows: list[dict[str, object]] = []
     for _, row in work_df.iterrows():
         score = 0.0
@@ -227,35 +203,47 @@ def analyze_market_behavior(market_df: pd.DataFrame) -> pd.DataFrame:
         turnover_rate = row["turnover_rate"]
         main_net_inflow = row["main_net_inflow"]
         relative_strength = row["relative_strength_vs_index"]
+
         if pd.notna(pct_change) and pd.notna(volume_ratio) and pd.notna(relative_strength):
             price_volume_signal = "普通波动"
-        if pd.notna(pct_change) and pd.notna(volume_ratio) and pd.notna(relative_strength) and pct_change > 3 and volume_ratio > 1.5 and relative_strength > 1:
+
+        ar = cfg["active_rise"]
+        if pd.notna(pct_change) and pd.notna(volume_ratio) and pd.notna(relative_strength) and pct_change > ar["pct_change_min"] and volume_ratio > ar["volume_ratio_min"] and relative_strength > ar["relative_strength_min"]:
             price_volume_signal = "主动性上涨"
-            score += 2.0
-        elif pd.notna(pct_change) and pd.notna(relative_strength) and pct_change > 0 and relative_strength <= 0.5:
-            price_volume_signal = "被动性跟涨"
-            score += 0.5
-        if pd.notna(turnover_rate) and pd.notna(pct_change) and turnover_rate > 20 and pct_change < 1:
+            score += ar["score"]
+        else:
+            pr = cfg["passive_rise"]
+            if pd.notna(pct_change) and pd.notna(relative_strength) and pct_change > pr["pct_change_min"] and relative_strength <= pr["relative_strength_max"]:
+                price_volume_signal = "被动性跟涨"
+                score += pr["score"]
+
+        hs = cfg["high_volume_stagnation"]
+        if pd.notna(turnover_rate) and pd.notna(pct_change) and turnover_rate > hs["turnover_rate_min"] and pct_change < hs["pct_change_max"]:
             price_volume_signal = "高位巨量滞涨"
-            score -= 1.5
+            score += hs["score"]
+
+        ff = cfg["fund_flow"]
         if pd.notna(main_net_inflow) and main_net_inflow > 0:
             fund_flow_signal = "主力净流入"
-            score += 1.5
+            score += ff["inflow_score"]
         elif pd.notna(main_net_inflow) and main_net_inflow < 0:
             fund_flow_signal = "主力净流出"
-            score -= 1.5
-        if pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change < -3 and main_net_inflow > 0:
+            score += ff["outflow_score"]
+
+        beh = cfg["behaviors"]
+        if pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change < beh["short_cover"]["pct_change_max"] and main_net_inflow > 0:
             behavior_label = "空头回补"
-            score += 1.0
-        elif pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change > 3 and main_net_inflow < 0:
+            score += beh["short_cover"]["score"]
+        elif pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change > beh["profit_taking"]["pct_change_min"] and main_net_inflow < 0:
             behavior_label = "获利回吐"
-            score -= 1.0
-        elif pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change < -3 and main_net_inflow < 0:
+            score += beh["profit_taking"]["score"]
+        elif pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change < beh["short_dominant"]["pct_change_max"] and main_net_inflow < 0:
             behavior_label = "做空主导"
-            score -= 2.0
-        elif pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change > 3 and main_net_inflow > 0:
+            score += beh["short_dominant"]["score"]
+        elif pd.notna(pct_change) and pd.notna(main_net_inflow) and pct_change > beh["long_dominant"]["pct_change_min"] and main_net_inflow > 0:
             behavior_label = "做多主导"
-            score += 2.0
+            score += beh["long_dominant"]["score"]
+
         rows.append({"stock_code": row["stock_code"], "price_volume_signal": price_volume_signal, "fund_flow_signal": fund_flow_signal, "behavior_label": behavior_label, "market_score": round(score, 2)})
     return pd.DataFrame(rows)
 
@@ -264,6 +252,9 @@ def synthesize_decision(row: pd.Series) -> str:
     text_label = row.get("text_event_label", "中性")
     market_behavior = row.get("behavior_label", "中性")
     fund_signal = row.get("fund_flow_signal", "资金观望")
+    integrated_score = row.get("integrated_score", 0)
+
+    dr = DECISION_RULES
     if text_label == "利好" and fund_signal == "主力净流入" and market_behavior in {"做多主导", "中性"}:
         return "大概率真利好，人气上升有资金支撑"
     if text_label == "利好" and fund_signal == "主力净流出":
@@ -272,8 +263,8 @@ def synthesize_decision(row: pd.Series) -> str:
         return "可能属于利空出尽，存在资金抄底迹象"
     if text_label == "利空" and market_behavior == "做空主导":
         return "偏真利空，资金面仍在恶化"
-    if row.get("integrated_score", 0) >= 2.5:
-        return "偏强，建议纳入重点观察"
-    if row.get("integrated_score", 0) <= -1.5:
-        return "偏弱，建议谨慎"
+    if integrated_score >= dr["strong_buy"]["min_integrated_score"]:
+        return dr["strong_buy"]["message"]
+    if integrated_score <= dr["strong_sell"]["max_integrated_score"]:
+        return dr["strong_sell"]["message"]
     return "信号分歧，等待更多确认"
