@@ -1,18 +1,28 @@
 import {
+  BarChartOutlined,
+  LineChartOutlined,
+  SearchOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
+import {
   Button,
+  Card,
+  Col,
+  DatePicker,
   Input,
   message,
   Modal,
+  Row,
+  Space,
   Spin,
+  Statistic,
   Table,
   Tag,
-  Typography,
-  DatePicker,
-  Space,
   Tooltip,
+  Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   analysisApi,
   AnalysisResult,
@@ -21,9 +31,66 @@ import {
   NewsItem,
 } from "../utils";
 import dayjs from "dayjs";
-const { Title, Paragraph, Text, Link } = Typography;
+import styles from "./index.less";
+import commonStyles from "./common.less";
 
+const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
+
+const EVENT_LABEL_MAP: Record<string, string> = {
+  major_order: "大订单",
+  supply_chain_risk: "供应链风险",
+  earnings_growth: "盈利增长",
+  management_risk: "管理风险",
+  technology_breakthrough: "科技突破",
+  policy_support: "政策支持",
+  other: "其他",
+};
+
+const EVENT_COLOR_MAP: Record<string, string> = {
+  大订单: "blue",
+  供应链风险: "red",
+  盈利增长: "green",
+  管理风险: "orange",
+  科技突破: "purple",
+  政策支持: "cyan",
+  其他: "default",
+};
+
+const DECISION_COLOR_MAP: Record<string, string> = {
+  买入: "green",
+  推荐买入: "green",
+  卖出: "red",
+  推荐卖出: "red",
+  观望: "default",
+  持有: "blue",
+  减持: "orange",
+};
+
+function ScoreBar({
+  value,
+  max = 10,
+}: {
+  value: number | string;
+  max?: number;
+}) {
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  const safe = isNaN(num) ? 0 : num;
+  const pct = Math.min(Math.max((safe / max) * 100, 0), 100);
+  const color = safe >= 7 ? "#52c41a" : safe >= 4 ? "#faad14" : "#ff4d4f";
+  return (
+    <div className={styles.scoreBar}>
+      <div className={styles.scoreBarBg}>
+        <div
+          className={styles.scoreBarFill}
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <span className={styles.scoreBarValue}>{safe.toFixed(1)}</span>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [data, setData] = useState<AnalysisResult[]>([]);
   const [totalData, setTotalData] = useState<AnalysisResult[]>([]);
@@ -38,10 +105,7 @@ export default function HomePage() {
   const [filters, setFilters] = useState<{
     startTime: string | null;
     endTime: string | null;
-  }>({
-    startTime: "",
-    endTime: "",
-  });
+  }>({ startTime: "", endTime: "" });
 
   const openNewsModal = (record: AnalysisResult) => {
     setNewsModalTitle(`${record.stock_name}（${record.stock_code}）`);
@@ -55,27 +119,48 @@ export default function HomePage() {
       .finally(() => setNewsLoading(false));
   };
 
+  const stats = useMemo(() => {
+    const total = data.length;
+    const bullish = data.filter(
+      (d) => d.text_event_label === "利好" || d.decision?.includes("买入"),
+    ).length;
+    const bearish = data.filter(
+      (d) => d.text_event_label === "利空" || d.decision?.includes("卖出"),
+    ).length;
+    const neutral = total - bullish - bearish;
+    const avgScore =
+      total > 0
+        ? data.reduce((sum, d) => sum + Number(d.integrated_score || 0), 0) /
+          total
+        : 0;
+    return { total, bullish, bearish, neutral, avgScore };
+  }, [data]);
+
   const columns: ColumnsType<AnalysisResult> = [
     {
       title: "股票代码",
       dataIndex: "stock_code",
       key: "stock_code",
+      fixed: "left",
+      width: 110,
+      render: (text: string) => (
+        <Text strong style={{ fontFamily: "monospace" }}>
+          {text}
+        </Text>
+      ),
     },
     {
       title: "股票名称",
       dataIndex: "stock_name",
       key: "stock_name",
-      width: "100px",
+      fixed: "left",
+      width: 100,
       render: (text: string) => (
         <a
           onClick={() => {
             void copyToClipboard(text).then(
-              () => {
-                message.success("已复制股票名称");
-              },
-              () => {
-                message.error("复制失败");
-              },
+              () => message.success("已复制"),
+              () => message.error("复制失败"),
             );
           }}
         >
@@ -104,7 +189,7 @@ export default function HomePage() {
             <Tooltip
               title={
                 <span>
-                  {record.popularity_snapshot_time ? (
+                  {record.popularity_snapshot_time && (
                     <span>
                       快照：
                       {dayjs(record.popularity_snapshot_time).format(
@@ -112,16 +197,16 @@ export default function HomePage() {
                       )}
                       <br />
                     </span>
-                  ) : null}
-                  {record.popularity_previous_rank != null ? (
+                  )}
+                  {record.popularity_previous_rank != null && (
                     <span>
                       上期名次：{record.popularity_previous_rank}
                       <br />
                     </span>
-                  ) : null}
-                  {record.popularity_score != null ? (
+                  )}
+                  {record.popularity_score != null && (
                     <span>人气值：{record.popularity_score}</span>
-                  ) : null}
+                  )}
                 </span>
               }
             >
@@ -148,15 +233,11 @@ export default function HomePage() {
         (b.popularity_rank_change ?? -10_000),
       render: (_: unknown, record: AnalysisResult) => {
         const ch = record.popularity_rank_change;
-        if (ch == null) {
-          return <Text type="secondary">—</Text>;
-        }
-        if (ch === 0) {
-          return <Text type="secondary">持平</Text>;
-        }
+        if (ch == null) return <Text type="secondary">—</Text>;
+        if (ch === 0) return <Text type="secondary">持平</Text>;
         const up = ch > 0;
         return (
-          <Text style={{ color: up ? "#389e0d" : "#cf1322" }}>
+          <Text style={{ color: up ? "#389e0d" : "#cf1322", fontWeight: 600 }}>
             {up ? "↑" : "↓"}
             {Math.abs(ch)}
           </Text>
@@ -167,25 +248,36 @@ export default function HomePage() {
       title: "事件类型",
       dataIndex: "event_types",
       key: "event_types",
+      width: 180,
       render: (text: string) => {
-        text = text.replace("major_order", "大订单");
-        text = text.replace("supply_chain_risk", "供应链风险");
-        text = text.replace("earnings_growth", "盈利增长");
-        text = text.replace("management_risk", "管理风险");
-        text = text.replace("technology_breakthrough", "科技突破");
-        text = text.replace("policy_support", "政策支持");
-        text = text.replace("other", "");
-        const tags = text.split("|");
-
-        return tags.map((tag) => <Tag key={tag}>{tag}</Tag>);
+        const tags = text
+          .split("|")
+          .map((t) => t.trim())
+          .map((t) => EVENT_LABEL_MAP[t] || t)
+          .filter(Boolean);
+        return (
+          <Space size={[4, 4]} wrap>
+            {tags.map((tag) => (
+              <Tag key={tag} color={EVENT_COLOR_MAP[tag] || "default"}>
+                {tag}
+              </Tag>
+            ))}
+          </Space>
+        );
       },
     },
     {
-      title: "新闻数量",
+      title: "新闻",
       dataIndex: "news_count",
       key: "news_count",
+      width: 70,
       render: (count: number | undefined, record) => (
-        <Button type="link" size="small" onClick={() => openNewsModal(record)}>
+        <Button
+          type="link"
+          size="small"
+          icon={<SearchOutlined />}
+          onClick={() => openNewsModal(record)}
+        >
           {count ?? 0}
         </Button>
       ),
@@ -194,99 +286,111 @@ export default function HomePage() {
       title: "评分",
       dataIndex: "text_score",
       key: "text_score",
-      sorter: (a, b) => a.text_score - b.text_score,
+      width: 120,
+      sorter: (a, b) => Number(a.text_score) - Number(b.text_score),
+      render: (v: number) => <ScoreBar value={v} />,
     },
     {
       title: "市场评分",
       dataIndex: "market_score",
       key: "market_score",
-      sorter: (a, b) => a.market_score - b.market_score,
+      width: 120,
+      sorter: (a, b) => Number(a.market_score) - Number(b.market_score),
+      render: (v: number) => <ScoreBar value={v} />,
     },
     {
       title: "综合得分",
       dataIndex: "integrated_score",
       key: "integrated_score",
-      sorter: (a, b) => a.integrated_score - b.integrated_score,
+      width: 120,
+      sorter: (a, b) => Number(a.integrated_score) - Number(b.integrated_score),
+      defaultSortOrder: "descend",
+      render: (v: number) => <ScoreBar value={v} />,
     },
     {
       title: "决策建议",
       dataIndex: "decision",
       key: "decision",
-    },
-    {
-      title: "分析时间",
-      dataIndex: "analyzed_at",
-      key: "analyzed_at",
-      render: (text: string) => dayjs(text).format("YYYY-MM-DD HH:mm:ss"),
+      width: 150,
+      render: (text: string) => {
+        const color = Object.entries(DECISION_COLOR_MAP).find(([k]) =>
+          text?.includes(k),
+        )?.[1];
+        return (
+          <Tooltip title={text}>
+            <div style={{ width: 150, overflow: "hidden" }}>
+              <Tag color={color || "default"} style={{ fontWeight: 500 }}>
+                {text || "—"}
+              </Tag>
+            </div>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "事件标签",
       dataIndex: "text_event_label",
       key: "text_event_label",
+      width: 80,
       filters: [
-        {
-          text: "中性",
-          value: "中性",
-        },
-        {
-          text: "利好",
-          value: "利好",
-        },
-        {
-          text: "利空",
-          value: "利空",
-        },
+        { text: "中性", value: "中性" },
+        { text: "利好", value: "利好" },
+        { text: "利空", value: "利空" },
       ],
-      onFilter: (value, record) => record.text_event_label.includes(value),
+      onFilter: (value, record) =>
+        record.text_event_label.includes(String(value)),
+      render: (text: string) => {
+        const colorMap: Record<string, string> = {
+          利好: "green",
+          利空: "red",
+          中性: "default",
+        };
+        return <Tag color={colorMap[text] || "default"}>{text}</Tag>;
+      },
     },
-
     {
       title: "情绪强度",
       dataIndex: "sentiment_strength",
       key: "sentiment_strength",
-      sorter: (a, b) =>
-        a.sentiment_strength.localeCompare(b.sentiment_strength),
+      width: 90,
     },
-    // {
-    //   title: "持续周期",
-    //   dataIndex: "duration_tag",
-    //   key: "duration_tag",
-    // },
     {
-      title: "事实支撑度",
+      title: "事实支撑",
       dataIndex: "fact_support",
       key: "fact_support",
-      sorter: (a, b) =>
-        a.sentiment_strength.localeCompare(b.sentiment_strength),
+      width: 90,
     },
     {
       title: "看多逻辑",
       dataIndex: "bullish_logic",
       key: "bullish_logic",
+      ellipsis: true,
+      width: 200,
     },
-
     {
       title: "量价信号",
       dataIndex: "price_volume_signal",
       key: "price_volume_signal",
+      width: 100,
     },
     {
-      title: "资金流向信号",
+      title: "资金流信号",
       dataIndex: "fund_flow_signal",
       key: "fund_flow_signal",
+      width: 110,
       sorter: (a, b) => a.fund_flow_signal.localeCompare(b.fund_flow_signal),
     },
-    // {
-    //   title: "行为标签",
-    //   dataIndex: "behavior_label",
-    //   key: "behavior_label",
-    // },
+    {
+      title: "分析时间",
+      dataIndex: "analyzed_at",
+      key: "analyzed_at",
+      width: 160,
+      render: (text: string) => dayjs(text).format("MM-DD HH:mm"),
+    },
   ];
 
   const getStocks = () => {
-    analysisApi.getList().then((res) => {
-      setTotalData(res);
-    });
+    analysisApi.getList().then((res) => setTotalData(res));
   };
 
   useEffect(() => {
@@ -294,9 +398,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // 过滤时间
     if (filters.startTime && filters.endTime) {
-      console.log(filters.startTime, filters.endTime);
       setData(
         totalData.filter(
           (item) =>
@@ -327,68 +429,133 @@ export default function HomePage() {
         setSingleStockInput("");
         getStocks();
       })
-      .finally(() => {
-        setSingleAnalyzing(false);
-      });
+      .finally(() => setSingleAnalyzing(false));
   };
 
   return (
-    <div>
-      <Typography>
-        <Title>使用说明</Title>
+    <div className={commonStyles.pageContainer}>
+      {/* Stats Cards */}
+      <Row gutter={[16, 16]} className={styles.statsRow}>
+        <Col xs={12} sm={6}>
+          <Card size="small" className={styles.statCard}>
+            <Statistic
+              title="分析股票"
+              value={stats.total}
+              prefix={<BarChartOutlined />}
+              styles={{ content: { color: "#1677ff" } }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card size="small" className={styles.statCard}>
+            <Statistic
+              title="利好"
+              value={stats.bullish}
+              styles={{ content: { color: "#52c41a" } }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card size="small" className={styles.statCard}>
+            <Statistic
+              title="利空"
+              value={stats.bearish}
+              styles={{ content: { color: "#ff4d4f" } }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card size="small" className={styles.statCard}>
+            <Statistic
+              title="平均综合分"
+              value={stats.avgScore}
+              precision={1}
+              prefix={<LineChartOutlined />}
+              styles={{
+                content: {
+                  color:
+                    stats.avgScore >= 6
+                      ? "#52c41a"
+                      : stats.avgScore >= 4
+                        ? "#faad14"
+                        : "#ff4d4f",
+                },
+              }}
+            />
+          </Card>
+        </Col>
+      </Row>
 
-        <Paragraph>
-          当前同花顺人气前200新增的股票，比较的是上次的前200和现在的前200。
-        </Paragraph>
-        <Paragraph>数据仅保留14天。</Paragraph>
-      </Typography>
-      <Space wrap>
-        <Button
-          type="primary"
-          disabled={busy}
-          loading={running}
-          onClick={() => {
-            setRunning(true);
-            message.success("开始获取新增人气股票");
-            analysisApi
-              .runAll()
-              .then((res) => {
-                message.success(
-                  `获取完成,成功获取到${res.analysis.result_count}条数据`,
-                );
-                getStocks();
+      {/* Action Bar */}
+      <Card size="small" className={styles.actionBar}>
+        <Space wrap size="middle">
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            disabled={busy}
+            loading={running}
+            onClick={() => {
+              setRunning(true);
+              message.success("开始获取新增人气股票");
+              analysisApi
+                .runAll()
+                .then((res) => {
+                  message.success(
+                    `获取完成,成功获取到${res.analysis.result_count}条数据`,
+                  );
+                  getStocks();
+                })
+                .finally(() => setRunning(false));
+            }}
+          >
+            获取新增人气股票
+          </Button>
+          <Button
+            disabled={busy}
+            loading={singleAnalyzing}
+            icon={<SearchOutlined />}
+            onClick={() => setSingleModalOpen(true)}
+          >
+            分析单只股票
+          </Button>
+          <span className={styles.filterLabel}>时间筛选:</span>
+          <RangePicker
+            onChange={(values) =>
+              setFilters({
+                startTime: values?.[0]?.format("YYYY-MM-DD HH:mm:ss") || null,
+                endTime: values?.[1]
+                  ? dayjs(values[1]).endOf("day").format("YYYY-MM-DD HH:mm:ss")
+                  : null,
               })
-              .finally(() => {
-                setRunning(false);
-              });
-          }}
-        >
-          获取新增人气股票
-        </Button>
-        <Button
-          disabled={busy}
-          loading={singleAnalyzing}
-          onClick={() => setSingleModalOpen(true)}
-          type="primary"
-        >
-          分析单只股票
-        </Button>
-        <span>时间:</span>
+            }
+          />
+        </Space>
+      </Card>
 
-        <RangePicker
-          onChange={(values) => {
-            console.log(values);
-            setFilters({
-              startTime:
-                values && values[0] && values[0].format("YYYY-MM-DD HH:mm:ss"),
-              endTime: dayjs(values && values[1] && values[1])
-                .endOf("day")
-                .format("YYYY-MM-DD HH:mm:ss"),
-            });
+      {/* Data Table */}
+      <div>
+        <Table
+          dataSource={data}
+          columns={columns}
+          scroll={{ x: 2200 }}
+          rowKey={(row) =>
+            `${row.stock_code}-${row.analyzed_at}-${row.integrated_score}`
+          }
+          size="small"
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条`,
           }}
-        ></RangePicker>
-      </Space>
+          rowClassName={(record) => {
+            if (record.text_event_label === "利好") return styles.rowBullish;
+            if (record.text_event_label === "利空") return styles.rowBearish;
+            return "";
+          }}
+        />
+      </div>
 
+      {/* Single Stock Modal */}
       <Modal
         title="分析单只股票"
         open={singleModalOpen}
@@ -396,34 +563,23 @@ export default function HomePage() {
         okText="开始分析"
         cancelText="取消"
         destroyOnHidden
-        maskClosable={!singleAnalyzing}
+        mask={{ closable: !singleAnalyzing }}
         closable={!singleAnalyzing}
-        onCancel={() => {
-          if (!singleAnalyzing) {
-            setSingleModalOpen(false);
-          }
-        }}
+        onCancel={() => !singleAnalyzing && setSingleModalOpen(false)}
         onOk={() => submitAnalyzeSingle()}
         afterClose={() => setSingleStockInput("")}
       >
         <Input
-          placeholder="6位代码或完整代码，如 688353 / 002155.SZ（可不写后缀）"
+          placeholder="6位代码或完整代码，如 688353 / 002155.SZ"
           value={singleStockInput}
           disabled={singleAnalyzing}
           onChange={(e) => setSingleStockInput(e.target.value)}
-          onPressEnter={() => void submitAnalyzeSingle()}
+          onKeyDown={(e) => e.key === "Enter" && void submitAnalyzeSingle()}
+          size="large"
         />
       </Modal>
 
-      <Table
-        dataSource={data}
-        columns={columns}
-        scroll={{ x: 3000 }}
-        rowKey={(row) =>
-          `${row.stock_code}-${row.analyzed_at}-${row.integrated_score}`
-        }
-      />
-
+      {/* News Modal */}
       <Modal
         title={`新闻明细 — ${newsModalTitle}`}
         open={newsModalOpen}
@@ -461,7 +617,6 @@ export default function HomePage() {
                 key: "source",
                 width: 96,
                 ellipsis: true,
-                render: (s: string | null | undefined) => s ?? "—",
               },
               {
                 title: "链接",
@@ -481,13 +636,11 @@ export default function HomePage() {
                 title: "内容摘要",
                 key: "snippet",
                 ellipsis: true,
-                render: (_: unknown, row) => {
-                  return (
-                    <Tooltip title={row.content}>
-                      <div>{row.summary || row.content}</div>
-                    </Tooltip>
-                  );
-                },
+                render: (_: unknown, row) => (
+                  <Tooltip title={row.content}>
+                    <div>{row.summary || row.content}</div>
+                  </Tooltip>
+                ),
               },
             ]}
           />

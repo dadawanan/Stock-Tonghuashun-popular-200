@@ -5,6 +5,8 @@ from typing import Iterable
 
 import pandas as pd
 
+from stock_service.domain.services.stock_utils import normalize_stock_code
+
 
 EVENT_PATTERNS: dict[str, dict[str, object]] = {
     "major_order": {
@@ -65,17 +67,6 @@ class EventAnalysis:
     fact_support: str
     bullish_logic: str
     bearish_logic: str
-
-
-def normalize_stock_code(value: object) -> str:
-    text = str(value).strip()
-    if "." in text:
-        return text.upper()
-    if text.isdigit() and len(text) == 6:
-        suffix = ".SH" if text.startswith(("6", "9")) else ".SZ"
-        return f"{text}{suffix}"
-    return text.upper()
-
 
 def analyze_text_event(text: str) -> EventAnalysis:
     text = text or ""
@@ -286,4 +277,3 @@ def synthesize_decision(row: pd.Series) -> str:
     if row.get("integrated_score", 0) <= -1.5:
         return "偏弱，建议谨慎"
     return "信号分歧，等待更多确认"
-

@@ -31,6 +31,8 @@ import {
   Strategy,
   TradeOrder,
 } from "../../utils";
+import styles from "../common.less";
+import simStyles from "./sim.less";
 
 const { Title, Text } = Typography;
 
@@ -50,12 +52,10 @@ export default function SimTradingPage() {
   );
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
-  const [sellModalOpen, setSellModalOpen] = useState(false);
   const [pendingOrderModalOpen, setPendingOrderModalOpen] = useState(false);
   const [sellPosition, setSellPosition] = useState<Position | null>(null);
   const [createForm] = Form.useForm();
   const [tradeForm] = Form.useForm();
-  const [sellForm] = Form.useForm();
   const [pendingOrderForm] = Form.useForm();
 
   useEffect(() => {
@@ -243,35 +243,6 @@ export default function SimTradingPage() {
     });
   };
 
-  const handleOpenSellModal = (position: Position) => {
-    setSellPosition(position);
-    sellForm.setFieldsValue({
-      code: position.code,
-      quantity: position.available_quantity,
-      price: null, // 需要从后端获取最新价格
-    });
-    setSellModalOpen(true);
-  };
-
-  const handleSellFromPosition = async () => {
-    if (!selectedAccount || !sellPosition) return;
-    try {
-      const values = await sellForm.validateFields();
-      await quantApi.executeTrade({
-        account_id: selectedAccount.id,
-        code: values.code,
-        side: "sell",
-        quantity: values.quantity,
-        price: values.price,
-      });
-      message.success("卖出成功");
-      setSellModalOpen(false);
-      selectAccount(selectedAccount);
-    } catch (e: any) {
-      message.error(e?.message || "卖出失败");
-    }
-  };
-
   const handleCreatePendingOrder = async () => {
     if (!selectedAccount) return;
     try {
@@ -429,15 +400,9 @@ export default function SimTradingPage() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        <Title level={3}>模拟盘</Title>
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <Title level={3} className={styles.pageTitle}>模拟盘</Title>
         <Space>
           <Button onClick={() => setCreateModalOpen(true)}>新建账户</Button>
           <Popconfirm
@@ -466,9 +431,9 @@ export default function SimTradingPage() {
       </div>
 
       {selectedAccount && (
-        <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Row gutter={16} className={simStyles.sectionGap}>
           <Col span={6}>
-            <Card>
+            <Card className={simStyles.statsCard}>
               <Statistic
                 title="账户名称"
                 value={selectedAccount.account_name}
@@ -476,7 +441,7 @@ export default function SimTradingPage() {
             </Card>
           </Col>
           <Col span={6}>
-            <Card>
+            <Card className={simStyles.statsCard}>
               <Statistic
                 title="当前资金"
                 value={parseFloat(selectedAccount.current_capital)}
@@ -486,7 +451,7 @@ export default function SimTradingPage() {
             </Card>
           </Col>
           <Col span={6}>
-            <Card>
+            <Card className={simStyles.statsCard}>
               <Statistic
                 title="总资产"
                 value={parseFloat(selectedAccount.total_assets)}
@@ -496,7 +461,7 @@ export default function SimTradingPage() {
             </Card>
           </Col>
           <Col span={6}>
-            <Card>
+            <Card className={simStyles.statsCard}>
               <Statistic
                 title="盈亏"
                 value={
@@ -604,10 +569,10 @@ export default function SimTradingPage() {
               }}
               onRow={(record) => ({
                 onClick: () => selectAccount(record),
+                className:
+                  selectedAccount?.id === record.id ? simStyles.accountCardActive : "",
                 style: {
                   cursor: "pointer",
-                  background:
-                    selectedAccount?.id === record.id ? "#e6f7ff" : undefined,
                 },
               })}
             />
@@ -618,7 +583,7 @@ export default function SimTradingPage() {
           <Card
             title="持仓"
             size="small"
-            style={{ marginBottom: 16 }}
+            className={simStyles.sectionGap}
             extra={
               <Space>
                 <Button
@@ -641,17 +606,6 @@ export default function SimTradingPage() {
                 >
                   导出
                 </Button>
-                {/* <Button
-                  size="small"
-                  danger
-                  onClick={() => {
-                    setSellPosition(null);
-                    tradeForm.setFieldsValue({ side: "sell", order_type: "market" });
-                    setTradeModalOpen(true);
-                  }}
-                >
-                  卖出
-                </Button> */}
               </Space>
             }
           >
@@ -668,7 +622,7 @@ export default function SimTradingPage() {
             <Card
               title="挂单列表"
               size="small"
-              style={{ marginBottom: 16 }}
+              className={simStyles.sectionGap}
               extra={
                 <Popconfirm
                   title="确定取消所有挂单？"
@@ -780,7 +734,7 @@ export default function SimTradingPage() {
               }))}
             />
           </Form.Item>
-          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
+          <div className={simStyles.hint}>
             * 绑定策略后，定时任务会在交易时间自动执行该策略的买卖信号
           </div>
         </Form>
@@ -823,7 +777,7 @@ export default function SimTradingPage() {
               min={100}
               max={
                 tradeForm.getFieldValue("side") === "sell"
-                  ? sellPosition?.available_quantity
+                  ? sellPosition?.available_quantity ?? undefined
                   : undefined
               }
               step={100}
@@ -856,7 +810,7 @@ export default function SimTradingPage() {
               </Form.Item>
             </>
           )}
-          <div style={{ color: "#999", fontSize: 12, marginTop: -8 }}>
+          <div className={simStyles.hint}>
             {tradeForm.getFieldValue("order_type") === "market" ? (
               <>
                 <div>市价单：使用实时行情价立即成交</div>

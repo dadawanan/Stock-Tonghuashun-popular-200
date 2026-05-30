@@ -31,6 +31,7 @@ import {
   quantApi,
   Strategy,
 } from "../../utils";
+import styles from "../common.less";
 
 const { Title, Text } = Typography;
 
@@ -292,10 +293,10 @@ export default function BacktestPage() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <Title level={3}>回测系统</Title>
+    <div className={styles.pageContainer}>
+      <Title level={3} className={styles.pageTitle}>回测系统</Title>
 
-      <Card title="运行回测" style={{ marginBottom: 16 }}>
+      <Card title="运行回测" className={styles.sectionGap}>
         <Form
           form={form}
           layout="inline"
@@ -332,7 +333,7 @@ export default function BacktestPage() {
         </Form>
       </Card>
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
+      <Row gutter={16} className={styles.sectionGap}>
         <Col span={6}>
           <Card>
             <Statistic title="总回测次数" value={results.length} />
@@ -428,7 +429,7 @@ export default function BacktestPage() {
 
       <Card
         title="回测记录"
-        style={{ marginBottom: 16 }}
+        className={styles.sectionGap}
         extra={
           <Space>
             {selectedRowKeys.length > 0 && (
@@ -462,7 +463,7 @@ export default function BacktestPage() {
 
           <Card
             title={`交易明细 (回测 #${selectedResult.id})`}
-            style={{ marginBottom: 16 }}
+            className={styles.sectionGap}
             extra={
               <Button
                 onClick={() =>

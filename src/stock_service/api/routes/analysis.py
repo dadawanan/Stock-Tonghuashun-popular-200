@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.api.dependencies import get_current_user, get_session
 from stock_service.application.services.analysis_service import run_analysis, store_analysis_results
-from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
+from stock_service.application.services.market_data_service import compute_and_store_indicators, run_fetch_pipeline_for_rows
 from stock_service.application.services.pipeline_service import run_all_pipeline
 from stock_service.crud import v2_crud
-from stock_service.domain.services.analysis_rules import normalize_stock_code
-from stock_service.infrastructure.providers.eastmoney_provider import fetch_quote
+from stock_service.infrastructure.providers.market_data_hub import fetch_stock_name
+from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 from stock_service.schemas.responses import ApiResponse
 
 
@@ -54,7 +54,7 @@ async def api_analyze(
         stock_name = str((match or {}).get("stock_name") or "").strip()
         if not stock_name:
             try:
-                stock_name = str(fetch_quote(normalized).get("stock_name") or "").strip()
+                stock_name = str(fetch_stock_name(normalized) or "").strip()
             except Exception:
                 stock_name = ""
         row: dict[str, Any] = {
@@ -91,4 +91,32 @@ async def api_run_all(current_user: dict = Depends(get_current_user), session: A
         return ApiResponse(data=await run_all_pipeline(session))
     except Exception as exc:
         logger.exception("run-all 失败")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/api/quant/indicators/compute", response_model=ApiResponse)
+async def api_compute_indicators(
+    current_user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse:
+    """手动触发技术指标计算（从 stock_daily 计算 ma5/ma20/rsi/macd 写入 stock_indicator）"""
+    try:
+        count = await compute_and_store_indicators(session)
+        return ApiResponse(code=0, msg="ok", data={"computed": count})
+    except Exception as exc:
+        logger.exception("计算指标失败")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/api/quant/daily/backfill", response_model=ApiResponse)
+async def api_backfill_daily(
+    current_user: dict = Depends(get_current_user),
+) -> ApiResponse:
+    """手动触发人气榜股票的日线数据补全（从腾讯行情拉取最近一年 K 线）"""
+    from stock_service.scheduler import update_popularity_daily_data
+    try:
+        await update_popularity_daily_data()
+        return ApiResponse(code=0, msg="ok", data={"message": "日线数据补全任务已执行，请查看服务端日志"})
+    except Exception as exc:
+        logger.exception("补全日线数据失败")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

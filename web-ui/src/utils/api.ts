@@ -179,6 +179,7 @@ export interface BacktestTrade {
 export interface BacktestNav {
   trade_date: string;
   nav: number | null;
+  benchmark_nav?: number | null;
   total_assets: number | null;
   cash: number | null;
   position_value: number | null;
@@ -264,6 +265,16 @@ export const quantApi = {
     http.put<Strategy>(`/api/quant/strategies/${id}`, data),
 
   deleteStrategy: (id: number) => http.delete(`/api/quant/strategies/${id}`),
+
+  previewSignals: (data?: { strategy_ids?: number[]; max_stocks?: number }) =>
+    http.post<any>('/api/quant/strategies/signals/preview', data || {}),
+
+  // Data maintenance
+  backfillDaily: () =>
+    http.post<{ message: string }>('/api/quant/daily/backfill'),
+
+  computeIndicators: () =>
+    http.post<{ computed: number }>('/api/quant/indicators/compute'),
 
   // Backtest
   runBacktest: (data: {

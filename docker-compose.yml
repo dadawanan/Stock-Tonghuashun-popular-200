@@ -1,82 +1,72 @@
 version: "3.8"
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: stock-db
+    container_name: stock-postgres
+    restart: always
     environment:
       POSTGRES_DB: stock_db
       POSTGRES_USER: postgresql
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-stock123456}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "55443:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./schema_v2.sql:/docker-entrypoint-initdb.d/01-schema-v2.sql
-      - ./schema_quant_v1.sql:/docker-entrypoint-initdb.d/02-schema-quant.sql
+      - stock_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgresql -d stock_db"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-    restart: unless-stopped
+      retries: 10
 
-  # Python API Server
   stock-api:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: stock-api
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: stock_db
-      DB_USER: postgresql
-      DB_PASSWORD: ${DB_PASSWORD:-stock123456}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-here}
-      PYTHONPATH: /app/src
-    ports:
-      - "8000:8000"
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_NAME: stock_db
+      DB_USER: postgresql
+      DB_PASSWORD: ${DB_PASSWORD}
+      PYTHONPATH: /app/src
+    ports:
+      - "8000:8000"
     volumes:
       - ./src:/app/src
-      - ./.env:/app/.env:ro
-    restart: unless-stopped
 
-  # Python Scheduler
   stock-scheduler:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: stock-scheduler
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: stock_db
-      DB_USER: postgresql
-      DB_PASSWORD: ${DB_PASSWORD:-stock123456}
-      PYTHONPATH: /app/src
-    command: ["python", "-m", "stock_service.scheduler"]
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
+    command: ["python", "-m", "stock_service.scheduler"]
+    environment:
+      DB_HOST: postgres
+      DB_NAME: stock_db
+      DB_USER: postgresql
+      DB_PASSWORD: ${DB_PASSWORD}
+      PYTHONPATH: /app/src
     volumes:
       - ./src:/app/src
-      - ./.env:/app/.env:ro
-    restart: unless-stopped
 
-  # Frontend
   stock-web:
     build:
       context: .
       dockerfile: Dockerfile.web
     container_name: stock-web
+    restart: always
     ports:
       - "8001:8001"
-    restart: unless-stopped
 
 volumes:
-  pgdata:
+  stock_pgdata:
+    name: stock_pgdata

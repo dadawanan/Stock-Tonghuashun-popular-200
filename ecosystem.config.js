@@ -1,16 +1,12 @@
 /**
  * PM2 进程描述：终端退出后仍保持运行。
  *
- * 前端模式控制：
- *   WEB_MODE=dev   → 开发模式（pnpm dev，热更新）
- *   WEB_MODE=prod  → 生产模式（pnpm build + serve 静态托管）
- *   未设置时默认 dev
+ * 前端已改用 nginx 托管，PM2 只管理后端 API 和定时任务调度器。
  */
 const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const webUi = path.join(root, "web-ui");
 /** 优先用项目 .venv，避免 PM2 用到 PATH 里另一个 python3（依赖/环境不一致） */
 const venvPython = path.join(root, ".venv", "bin", "python");
 const stockApiPython = fs.existsSync(venvPython) ? venvPython : "python3";
@@ -18,12 +14,8 @@ const stockApiPython = fs.existsSync(venvPython) ? venvPython : "python3";
 const inheritShellEnv = {
   PATH: process.env.PATH || "",
   HOME: process.env.HOME || "",
+  APP_ENV: process.env.APP_ENV || "prod",
 };
-
-const WEB_MODE = process.env.WEB_MODE || "dev";
-const webScript = WEB_MODE === "prod"
-  ? path.join(root, "scripts", "pm2-web-prod.sh")
-  : path.join(root, "scripts", "pm2-web-dev.sh");
 
 module.exports = {
   apps: [
@@ -36,22 +28,10 @@ module.exports = {
       env: {
         ...inheritShellEnv,
         PYTHONPATH: path.join(root, "src"),
-      },
-      autorestart: true,
-      max_restarts: 15,
-      restart_delay: 4000,
-      exp_backoff_restart_delay: 1000,
-    },
-    {
-      name: "stock-web",
-      cwd: webUi,
-      script: webScript,
-      interpreter: "bash",
-      env: {
-        ...inheritShellEnv,
-        PORT: "8001",
-        HOST: "0.0.0.0",
-        WEB_MODE: WEB_MODE,
+        // 配置允许的前端域名（CORS），支持多个域名用逗号分隔
+        // 开发环境：http://localhost:8001
+        // 生产环境：http://101.35.255.200:8001 或其他域名
+        ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "http://localhost:8001,http://101.35.255.200:8001",
       },
       autorestart: true,
       max_restarts: 15,

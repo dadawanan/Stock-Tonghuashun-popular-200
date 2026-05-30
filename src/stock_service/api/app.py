@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
+import traceback
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from stock_service.api.dependencies import lifespan
 from stock_service.api.routes.analysis import router as analysis_router
@@ -16,7 +20,38 @@ from stock_service.quant.api.routes import strategies, backtest, sim_trading, fe
 logger = logging.getLogger("stock-api")
 
 
+# 从环境变量读取允许的前端域名，支持多个域名（逗号分隔）
+# 示例: ALLOWED_ORIGINS=http://localhost:8001,http://101.35.255.200:8001
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8001,http://101.35.255.200:8001")
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
+logger.info(f"允许的前端域名: {allowed_origins}")
+
+
 app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """捕获所有未处理的异常，返回详细的错误信息而非通用的 Internal Server Error"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": -1,
+            "msg": str(exc),
+            "detail": traceback.format_exc(),
+        },
+    )
+
+# 配置 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,  # 允许的来源
+    allow_credentials=True,          # 允许携带凭证（cookies）
+    allow_methods=["*"],             # 允许所有 HTTP 方法
+    allow_headers=["*"],             # 允许所有请求头
+)
 
 
 @app.get("/")

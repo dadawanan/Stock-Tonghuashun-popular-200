@@ -565,7 +565,7 @@ async def get_latest_popularity_data(session: AsyncSession) -> dict[str, dict]:
     sub = select(func.max(PopularitySnapshot.snapshot_time)).scalar_subquery()
     result = await session.execute(
         select(PopularitySnapshot, StockMaster.stock_code)
-        .join(StockMaster, PopularitySnapshot.stock_id == StockMaster.id)
+        .join(StockMaster, PopularitySnapshot.stock_code == StockMaster.stock_code)
         .where(PopularitySnapshot.snapshot_time == sub)
         .order_by(PopularitySnapshot.popularity_rank)
     )
@@ -598,21 +598,34 @@ async def list_feedback_logs(
 async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
+    from sqlalchemy import text
     for row in rows:
-        stmt = pg_insert(StockDaily).values(**row)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_stock_daily_code_date",
-            set_={
-                "open": stmt.excluded.open,
-                "high": stmt.excluded.high,
-                "low": stmt.excluded.low,
-                "close": stmt.excluded.close,
-                "volume": stmt.excluded.volume,
-                "amount": stmt.excluded.amount,
-                "updated_at": func.now(),
-            },
-        )
-        await session.execute(stmt)
+        await session.execute(text("""
+            INSERT INTO stock_daily (code, trade_date, open, high, low, close, volume, amount, created_at, updated_at)
+            VALUES (:code, :trade_date, :open, :high, :low, :close, :volume, :amount, NOW(), NOW())
+            ON CONFLICT (code, trade_date) DO UPDATE SET
+                open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
+                close = EXCLUDED.close, volume = EXCLUDED.volume, amount = EXCLUDED.amount,
+                updated_at = NOW()
+        """), row)
+    await session.flush()
+    return len(rows)
+
+
+async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    from sqlalchemy import text
+    for row in rows:
+        await session.execute(text("""
+            INSERT INTO stock_indicator (code, trade_date, ma5, ma20, rsi, macd, boll_upper, boll_lower, created_at, updated_at)
+            VALUES (:code, :trade_date, :ma5, :ma20, :rsi, :macd, :boll_upper, :boll_lower, NOW(), NOW())
+            ON CONFLICT (code, trade_date) DO UPDATE SET
+                ma5 = EXCLUDED.ma5, ma20 = EXCLUDED.ma20,
+                rsi = EXCLUDED.rsi, macd = EXCLUDED.macd,
+                boll_upper = EXCLUDED.boll_upper, boll_lower = EXCLUDED.boll_lower,
+                updated_at = NOW()
+        """), row)
     await session.flush()
     return len(rows)
 

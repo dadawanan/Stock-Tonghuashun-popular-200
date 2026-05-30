@@ -19,13 +19,15 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 
 from stock_service.application.services.analysis_service import run_and_store
 from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
 from stock_service.application.services.popularity_service import run_popularity_pipeline
 from stock_service.crud import quant_crud
 from stock_service.db.database import AsyncSessionFactory
+from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
 from stock_service.quant.application.sim_trading_engine import SimTradingEngine
 from stock_service.quant.application.strategy_engine import (
     BreakoutStrategy,
@@ -122,6 +124,13 @@ async def run_pipeline() -> None:
             # 更新人气榜股票的日线数据
             await update_popularity_daily_data()
 
+            # 计算技术指标
+            from stock_service.application.services.market_data_service import compute_and_store_indicators
+            async with AsyncSessionFactory() as session:
+                indicator_count = await compute_and_store_indicators(session)
+                await session.commit()
+                logger.info(f"[indicators] 计算了 {indicator_count} 只股票的技术指标")
+
             # 自动执行模拟盘交易
             await auto_trade_for_accounts(session, new_entries)
 
@@ -147,7 +156,7 @@ async def update_popularity_daily_data() -> None:
                     WHERE trade_date >= NOW() - INTERVAL '3 days'
                 )
                 ORDER BY ps.stock_code
-                LIMIT 50
+                LIMIT 200
             """))
             codes = [row[0] for row in result.fetchall()]
 
@@ -161,11 +170,12 @@ async def update_popularity_daily_data() -> None:
         start_date = end_date - timedelta(days=365)
 
         total_rows = 0
+        consecutive_failures = 0
         for code in codes:
             try:
-                from stock_service.infrastructure.providers.sina_provider import fetch_kline_sina
+                from stock_service.infrastructure.providers.tencent_provider import fetch_kline_tx
                 df = await asyncio.to_thread(
-                    fetch_kline_sina, code,
+                    fetch_kline_tx, code,
                     start_date.strftime("%Y%m%d"),
                     end_date.strftime("%Y%m%d"),
                 )
@@ -179,21 +189,18 @@ async def update_popularity_daily_data() -> None:
                     row["amount"] = 0
 
                 async with AsyncSessionFactory() as session:
-                    for row in records:
-                        await session.execute(text("""
-                            INSERT INTO stock_daily (code, trade_date, open, high, low, close, volume, amount, created_at, updated_at)
-                            VALUES (:code, :trade_date, :open, :high, :low, :close, :volume, :amount, NOW(), NOW())
-                            ON CONFLICT (code, trade_date) DO UPDATE SET
-                                open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
-                                close = EXCLUDED.close, volume = EXCLUDED.volume, amount = EXCLUDED.amount,
-                                updated_at = NOW()
-                        """), row)
+                    await quant_crud.batch_upsert_stock_daily(session, records)
                     await session.commit()
 
                 total_rows += len(records)
+                consecutive_failures = 0
                 await asyncio.sleep(0.3)
             except Exception as e:
-                logger.warning(f"[daily-data] {code} 失败: {e}")
+                consecutive_failures += 1
+                logger.warning(f"[daily-data] {code} 失败({consecutive_failures}): {e}")
+                if consecutive_failures >= 3:
+                    logger.error(f"[daily-data] 连续失败 {consecutive_failures} 次，停止执行")
+                    break
 
         logger.info(f"[daily-data] 完成: {total_rows} 行数据")
 
@@ -228,17 +235,44 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                 # 获取最新人气榜数据
                 popularity_data = await quant_crud.get_latest_popularity_data(session)
 
+                stock_codes = [entry["stock_code"] for entry in new_entries]
+
+                # 填充策略上下文数据（行情、指标、分析结果）
+                market_data: dict[str, dict] = {}
+                indicators: dict[str, dict] = {}
+                trade_date = datetime.now().date()
+
+                for code in stock_codes:
+                    daily = await quant_crud.get_stock_daily(
+                        session, code, start_date=trade_date, end_date=trade_date,
+                    )
+                    if daily:
+                        market_data[code] = {
+                            k: float(v) if isinstance(v, Decimal) else v
+                            for k, v in daily[0].items()
+                        }
+
+                    ind = await quant_crud.get_stock_indicator(
+                        session, code, trade_date=trade_date,
+                    )
+                    if ind:
+                        indicators[code] = {
+                            k: float(v) for k, v in ind.items()
+                            if isinstance(v, (int, float, Decimal)) and k not in ("id",)
+                        }
+
+                adapter = AnalysisAdapter(session)
+                analysis = await adapter.get_analysis_signals(stock_codes)
+
                 # 构建策略上下文
                 context = StrategyContext(
-                    trade_date=datetime.now().date(),
-                    market_data={},
-                    indicators={},
-                    analysis={},
+                    trade_date=trade_date,
+                    market_data=market_data,
+                    indicators=indicators,
+                    analysis=analysis,
                     popularity=popularity_data,
                     positions={},
                 )
-
-                stock_codes = [entry["stock_code"] for entry in new_entries]
 
                 # 运行所有策略，收集信号
                 all_signals: dict[str, dict[str, list]] = {}  # code -> {buy: [...], sell: [...]}
@@ -297,61 +331,97 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
 
                 logger.info(f"[auto-trade] 账户「{account_name}」生成 {len(consensus_signals)} 个共识信号")
 
-                # 执行交易
-                sim_engine = SimTradingEngine(session)
+                # 获取价格并准备交易数据
+                from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
                 account_config = account.get("config") or {}
                 max_position_pct = account_config.get("max_position_pct", 0.2)
 
-                for signal in consensus_signals:
-                    try:
-                        if signal.signal_type == SignalType.BUY:
-                            # 获取实时价格
-                            from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                # 检查是否在交易时间内
+                from stock_service.quant.domain.trading_calendar import is_trading_time as check_trading_time
+                trading, reason = check_trading_time()
+                if not trading:
+                    # 非交易时间 → 创建挂单，等开盘后自动成交
+                    logger.info(f"[auto-trade] 非交易时间（{reason}），创建挂单")
+                    for signal in consensus_signals:
+                        try:
                             current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
-
                             if not current_price or current_price <= 0:
-                                logger.warning(f"[auto-trade] 无法获取 {signal.code} 的价格")
+                                logger.warning(f"[auto-trade] 无法获取 {signal.code} 的价格，跳过挂单")
                                 continue
 
-                            # 计算买入数量
-                            total_assets = float(account.get("total_assets", 0))
-                            max_amount = total_assets * max_position_pct * signal.score
-                            quantity = int(max_amount / current_price / 100) * 100
-
-                            if quantity < 100:
-                                logger.info(f"[auto-trade] {signal.code} 计算数量不足100股，跳过")
+                            if signal.signal_type == SignalType.BUY:
+                                total_assets = float(account.get("total_assets", 0))
+                                max_amount = total_assets * max_position_pct * signal.score
+                                quantity = int(max_amount / current_price / 100) * 100
+                                if quantity < 100:
+                                    logger.info(f"[auto-trade] {signal.code} 计算数量不足100股，跳过挂单")
+                                    continue
+                            elif signal.signal_type == SignalType.SELL:
+                                position = await quant_crud.get_position(session, account_id, signal.code)
+                                if not position or position.get("available_quantity", 0) <= 0:
+                                    continue
+                                quantity = position["available_quantity"]
+                            else:
                                 continue
 
-                            result = await sim_engine.buy(
-                                account_id, signal.code, quantity, current_price
-                            )
+                            await quant_crud.create_pending_order(session, {
+                                "account_id": account_id,
+                                "code": signal.code,
+                                "side": signal.signal_type.value,
+                                "target_price": Decimal(str(round(current_price, 4))),
+                                "quantity": quantity,
+                                "status": "pending",
+                                "note": signal.reason,
+                            })
                             logger.info(
-                                f"[auto-trade] 买入 {signal.code} {quantity}股 "
-                                f"@ {current_price:.2f} - {signal.reason}"
+                                f"[auto-trade] 挂单: {signal.signal_type.value} {signal.code} "
+                                f"{quantity}股 @ {current_price:.2f} - {signal.reason}"
                             )
-
-                        elif signal.signal_type == SignalType.SELL:
-                            position = await quant_crud.get_position(
-                                session, account_id, signal.code
-                            )
-                            if position and position.get("available_quantity", 0) > 0:
-                                from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                        except Exception as e:
+                            logger.error(f"[auto-trade] 创建挂单失败 {signal.code}: {e}")
+                else:
+                    # 交易时间内 → 直接执行
+                    sim_engine = SimTradingEngine(session)
+                    for signal in consensus_signals:
+                        try:
+                            if signal.signal_type == SignalType.BUY:
                                 current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
+                                if not current_price or current_price <= 0:
+                                    logger.warning(f"[auto-trade] 无法获取 {signal.code} 的价格")
+                                    continue
 
-                                if current_price and current_price > 0:
-                                    result = await sim_engine.sell(
-                                        account_id, signal.code,
-                                        position["available_quantity"],
-                                        current_price
-                                    )
-                                    logger.info(
-                                        f"[auto-trade] 卖出 {signal.code} "
-                                        f"{position['available_quantity']}股 "
-                                        f"@ {current_price:.2f} - {signal.reason}"
-                                    )
+                                total_assets = float(account.get("total_assets", 0))
+                                max_amount = total_assets * max_position_pct * signal.score
+                                quantity = int(max_amount / current_price / 100) * 100
+                                if quantity < 100:
+                                    logger.info(f"[auto-trade] {signal.code} 计算数量不足100股，跳过")
+                                    continue
 
-                    except Exception as e:
-                        logger.error(f"[auto-trade] 交易失败 {signal.code}: {e}")
+                                result = await sim_engine.buy(
+                                    account_id, signal.code, quantity, current_price
+                                )
+                                logger.info(
+                                    f"[auto-trade] 买入 {signal.code} {quantity}股 "
+                                    f"@ {current_price:.2f} - {signal.reason}"
+                                )
+
+                            elif signal.signal_type == SignalType.SELL:
+                                position = await quant_crud.get_position(session, account_id, signal.code)
+                                if position and position.get("available_quantity", 0) > 0:
+                                    current_price = await asyncio.to_thread(fetch_realtime_price, signal.code)
+                                    if current_price and current_price > 0:
+                                        result = await sim_engine.sell(
+                                            account_id, signal.code,
+                                            position["available_quantity"],
+                                            current_price
+                                        )
+                                        logger.info(
+                                            f"[auto-trade] 卖出 {signal.code} "
+                                            f"{position['available_quantity']}股 "
+                                            f"@ {current_price:.2f} - {signal.reason}"
+                                        )
+                        except Exception as e:
+                            logger.error(f"[auto-trade] 交易失败 {signal.code}: {e}")
 
                 await session.commit()
 
@@ -379,7 +449,7 @@ async def check_pending_orders() -> None:
             for order in pending_orders:
                 try:
                     # 获取实时价格（新浪）
-                    from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+                    from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
                     current_price = await asyncio.to_thread(fetch_realtime_price, order["code"])
 
                     if not current_price or current_price <= 0:
@@ -456,6 +526,16 @@ async def run_daily_settlement() -> None:
                         logger.info(
                             f"[settlement] 账户「{account.get('account_name', account['id'])}」"
                             f"触发止损: {triggered}"
+                        )
+
+                    # 收盘后取消当天未成交的挂单
+                    cancelled = await quant_crud.cancel_all_pending_orders(
+                        session, account["id"]
+                    )
+                    if cancelled:
+                        logger.info(
+                            f"[settlement] 账户「{account.get('account_name', account['id'])}」"
+                            f"取消 {cancelled} 个未成交挂单"
                         )
                 except Exception as e:
                     logger.error(

@@ -3,19 +3,26 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
+  Col,
   Collapse,
+  Descriptions,
+  Divider,
   Form,
   Input,
   message,
   Modal,
+  Row,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { quantApi, Strategy } from "../../utils";
+import styles from "../common.less";
 
 const { Title, Paragraph, Text, Link } = Typography;
 
@@ -390,6 +397,17 @@ export default function StrategiesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
+  // Signal preview
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<any>(null);
+  const [selectedStrategyIds, setSelectedStrategyIds] = useState<number[]>([]);
+  const [maxStocks, setMaxStocks] = useState(50);
+
+  // Data maintenance
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [indicatorLoading, setIndicatorLoading] = useState(false);
+
   const loadStrategies = async () => {
     setLoading(true);
     try {
@@ -471,6 +489,46 @@ export default function StrategiesPage() {
     }
   };
 
+  const handlePreview = async () => {
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    try {
+      const result = await quantApi.previewSignals({
+        strategy_ids: selectedStrategyIds.length > 0 ? selectedStrategyIds : undefined,
+        max_stocks: maxStocks,
+      });
+      setPreviewResult(result);
+    } catch (e: any) {
+      message.error(e?.message || "信号预览失败");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleBackfill = async () => {
+    setBackfillLoading(true);
+    try {
+      await quantApi.backfillDaily();
+      message.success("日线数据补全完成");
+    } catch (e: any) {
+      message.error(e?.message || "补全日线数据失败");
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
+  const handleComputeIndicators = async () => {
+    setIndicatorLoading(true);
+    try {
+      const result = await quantApi.computeIndicators();
+      message.success(`技术指标计算完成，处理了 ${result.computed} 只股票`);
+    } catch (e: any) {
+      message.error(e?.message || "计算指标失败");
+    } finally {
+      setIndicatorLoading(false);
+    }
+  };
+
   const columns: ColumnsType<Strategy> = [
     { title: "名称", dataIndex: "name", width: 150 },
     {
@@ -525,22 +583,27 @@ export default function StrategiesPage() {
   const selectedType = Form.useWatch("type", form);
 
   return (
-    <div style={{ padding: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        <Title level={3}>策略管理</Title>
-        <Button type="primary" onClick={handleCreate}>
-          新建策略
-        </Button>
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <Title level={3} className={styles.pageTitle}>策略管理</Title>
+        <Space>
+          <Button loading={backfillLoading} onClick={handleBackfill}>
+            补全数据
+          </Button>
+          <Button loading={indicatorLoading} onClick={handleComputeIndicators}>
+            计算指标
+          </Button>
+          <Button onClick={() => setPreviewOpen(true)}>
+            信号预览
+          </Button>
+          <Button type="primary" onClick={handleCreate}>
+            新建策略
+          </Button>
+        </Space>
       </div>
 
       {/* 使用说明 */}
-      <Card title="使用说明" style={{ marginBottom: 16 }}>
+      <Card title="使用说明" className={styles.sectionGap}>
         <Paragraph>
           策略是量化交易的核心，决定了何时买入、何时卖出。系统提供 4
           种内置策略，每种策略有不同的参数可调。
@@ -694,6 +757,140 @@ export default function StrategiesPage() {
             />
           )}
         </Form>
+      </Modal>
+
+      {/* Signal Preview Modal */}
+      <Modal
+        title="信号预览"
+        open={previewOpen}
+        onCancel={() => { setPreviewOpen(false); setPreviewResult(null); }}
+        footer={null}
+        width={800}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <div>
+              <Text strong>选择策略（不选则使用全部）：</Text>
+              <div style={{ marginTop: 8 }}>
+                <Checkbox.Group
+                  value={selectedStrategyIds}
+                  onChange={(vals) => setSelectedStrategyIds(vals as number[])}
+                >
+                  <Row gutter={[8, 8]}>
+                    {strategies.map((s) => (
+                      <Col key={s.id}>
+                        <Checkbox value={s.id}>
+                          <Tag color={strategyTypeLabels[s.type]?.color || "default"} style={{ marginLeft: 4 }}>
+                            {strategyTypeLabels[s.type]?.label || s.type}
+                          </Tag>
+                          {s.name}
+                        </Checkbox>
+                      </Col>
+                    ))}
+                  </Row>
+                </Checkbox.Group>
+              </div>
+            </div>
+            <Space>
+              <Text strong>最大股票数：</Text>
+              <Input
+                type="number"
+                value={maxStocks}
+                onChange={(e) => setMaxStocks(Number(e.target.value) || 50)}
+                style={{ width: 100 }}
+              />
+            </Space>
+            <Button type="primary" onClick={handlePreview} loading={previewLoading}>
+              运行预览
+            </Button>
+          </Space>
+        </div>
+
+        {previewLoading && (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <Spin tip="正在运行策略预览..." />
+          </div>
+        )}
+
+        {previewResult && (
+          <div>
+            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="交易日期">{previewResult.trade_date}</Descriptions.Item>
+              <Descriptions.Item label="股票数量">{previewResult.stock_count}</Descriptions.Item>
+              <Descriptions.Item label="策略数量">{previewResult.strategy_count}</Descriptions.Item>
+              <Descriptions.Item label="总信号数">{previewResult.total_signals}</Descriptions.Item>
+            </Descriptions>
+
+            {/* Per-strategy signals */}
+            {Object.entries(previewResult.strategy_signals || {}).map(([name, signals]: [string, any]) => (
+              <Card key={name} size="small" title={name} style={{ marginBottom: 12 }}>
+                {signals.length === 0 ? (
+                  <Text type="secondary">无信号</Text>
+                ) : (
+                  <Table
+                    dataSource={signals}
+                    rowKey={(r: any) => `${r.code}-${r.type}`}
+                    size="small"
+                    pagination={false}
+                    columns={[
+                      { title: "代码", dataIndex: "code", width: 100 },
+                      {
+                        title: "方向",
+                        dataIndex: "type",
+                        width: 80,
+                        render: (v: string) => (
+                          <Tag color={v === "buy" ? "green" : "red"}>{v === "buy" ? "买入" : "卖出"}</Tag>
+                        ),
+                      },
+                      {
+                        title: "得分",
+                        dataIndex: "score",
+                        width: 80,
+                        render: (v: number) => v?.toFixed(4),
+                      },
+                      { title: "原因", dataIndex: "reason", ellipsis: true },
+                    ]}
+                  />
+                )}
+              </Card>
+            ))}
+
+            {/* Consensus signals */}
+            <Divider>共识信号（全部策略一致）</Divider>
+            {(previewResult.consensus_signals || []).length === 0 ? (
+              <Alert type="info" message="当前没有所有策略一致的信号" showIcon />
+            ) : (
+              <Table
+                dataSource={previewResult.consensus_signals}
+                rowKey={(r: any) => `${r.code}-${r.direction}`}
+                size="small"
+                pagination={false}
+                columns={[
+                  { title: "代码", dataIndex: "code", width: 100 },
+                  {
+                    title: "方向",
+                    dataIndex: "direction",
+                    width: 80,
+                    render: (v: string) => (
+                      <Tag color={v === "buy" ? "green" : "red"}>{v === "buy" ? "买入" : "卖出"}</Tag>
+                    ),
+                  },
+                  {
+                    title: "综合得分",
+                    dataIndex: "score",
+                    width: 100,
+                    render: (v: number) => v?.toFixed(4),
+                  },
+                  {
+                    title: "策略依据",
+                    dataIndex: "strategies",
+                    render: (arr: string[]) => arr?.join("; "),
+                  },
+                ]}
+              />
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

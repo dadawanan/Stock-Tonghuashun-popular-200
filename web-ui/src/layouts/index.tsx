@@ -97,6 +97,7 @@ export default function RootLayout() {
   return (
     <Layout className={styles.root}>
       <Header className={styles.header}>
+        <span className={styles.brand}>Stock Analysis</span>
         <Menu
           theme="dark"
           mode="horizontal"

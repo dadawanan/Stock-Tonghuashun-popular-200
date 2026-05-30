@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import quant_crud
-from stock_service.infrastructure.providers.sina_provider import fetch_realtime_price
+from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
 from stock_service.quant.domain.trading_calendar import is_trading_time
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class SimTradingEngine:
         if account["status"] != "active":
             raise ValueError("Account is not active")
 
-        # Get real-time price from Sina
+        # Get real-time price from Tencent
         try:
             exec_price = await asyncio.to_thread(fetch_realtime_price, code)
             if not exec_price:
@@ -148,7 +148,7 @@ class SimTradingEngine:
                 f"Insufficient available quantity: {position['available_quantity']} (T+1)"
             )
 
-        # Get real-time price from Sina
+        # Get real-time price from Tencent
         try:
             exec_price = await asyncio.to_thread(fetch_realtime_price, code)
             if not exec_price:
@@ -230,6 +230,9 @@ class SimTradingEngine:
                 self._session, pos["code"],
                 start_date=trade_date, end_date=trade_date,
             )
+            if not daily:
+                # 今天数据还没入库，取最近一条
+                daily = await quant_crud.get_stock_daily(self._session, pos["code"])
             close_price = float(daily[0]["close"]) if daily else float(pos["avg_price"])
 
             market_value = close_price * pos["quantity"]
@@ -306,9 +309,13 @@ class SimTradingEngine:
     async def _update_total_assets(self, account_id: int) -> None:
         account = await quant_crud.get_sim_account(self._session, account_id)
         positions = await quant_crud.get_positions(self._session, account_id)
-        position_value = sum(
-            float(p.get("avg_price", 0)) * p["quantity"] for p in positions
-        )
+        position_value = 0.0
+        for p in positions:
+            price = await asyncio.to_thread(fetch_realtime_price, p["code"])
+            if price and price > 0:
+                position_value += price * p["quantity"]
+            else:
+                position_value += float(p.get("avg_price", 0)) * p["quantity"]
         total = float(account["current_capital"]) + position_value
         await quant_crud.update_sim_account(self._session, account_id, {
             "total_assets": Decimal(str(round(total, 2))),

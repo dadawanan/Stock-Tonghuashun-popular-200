@@ -7,7 +7,8 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import v2_crud
-from stock_service.domain.services.analysis_rules import aggregate_news, analyze_market_behavior, analyze_news_records, normalize_stock_code, synthesize_decision
+from stock_service.domain.services.analysis_rules import aggregate_news, analyze_market_behavior, analyze_news_records, synthesize_decision
+from stock_service.domain.services.stock_utils import normalize_stock_code
 
 
 def _series_max_non_na(series: pd.Series) -> Any:

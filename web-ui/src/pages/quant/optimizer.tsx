@@ -19,6 +19,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { quantApi, Strategy } from "../../utils";
+import styles from "../common.less";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -187,8 +188,8 @@ export default function OptimizerPage() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <Title level={3}>参数优化</Title>
+    <div className={styles.pageContainer}>
+      <Title level={3} className={styles.pageTitle}>参数优化</Title>
 
       <Alert
         type="info"
@@ -203,10 +204,10 @@ export default function OptimizerPage() {
             </p>
           </div>
         }
-        style={{ marginBottom: 16 }}
+        className={styles.sectionGap}
       />
 
-      <Card title="配置优化参数" style={{ marginBottom: 16 }}>
+      <Card title="配置优化参数" className={styles.sectionGap}>
         <Form form={form} layout="vertical" initialValues={{ metric: "sharpe_ratio", top_n: 5 }}>
           <Row gutter={16}>
             <Col span={6}>
