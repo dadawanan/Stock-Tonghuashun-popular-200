@@ -33,16 +33,13 @@ app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """捕获所有未处理的异常，返回详细的错误信息而非通用的 Internal Server Error"""
+    """捕获所有未处理的异常。dev 环境返回 traceback，prod 只返回错误消息。"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={
-            "code": -1,
-            "msg": str(exc),
-            "detail": traceback.format_exc(),
-        },
-    )
+    is_dev = os.getenv("APP_ENV", "prod").strip().lower() == "dev"
+    content: dict = {"code": -1, "msg": str(exc)}
+    if is_dev:
+        content["detail"] = traceback.format_exc()
+    return JSONResponse(status_code=500, content=content)
 
 # 配置 CORS 中间件
 app.add_middleware(
