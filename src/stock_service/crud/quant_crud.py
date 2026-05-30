@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from stock_service.crud.utils import _rows_to_dicts
 from stock_service.db.models.quant_models import (
     BacktestDailyNav,
     BacktestResult,
@@ -21,10 +22,6 @@ from stock_service.db.models.quant_models import (
     TradeOrder,
 )
 from stock_service.db.models.v2_models import StockMaster
-
-
-def _rows_to_dicts(rows) -> list[dict]:
-    return [{c.name: getattr(r, c.name) for c in r.__table__.columns} for r in rows]
 
 
 # ── StockBasic ──

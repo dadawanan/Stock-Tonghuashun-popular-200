@@ -14,3 +14,4 @@ wheels/
 .claude
 .traces
 .pytest_cache
+web-ui/dist/

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "stock"
 version = "0.1.0"
-description = "Add your description here"
+description = "A股人气榜股票数据采集、行情分析、新闻情绪分析平台"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

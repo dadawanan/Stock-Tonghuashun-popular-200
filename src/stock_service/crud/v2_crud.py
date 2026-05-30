@@ -3,6 +3,8 @@ from decimal import Decimal
 from typing import Any, Sequence
 
 from sqlalchemy import func, select, text
+
+from stock_service.crud.utils import _rows_to_dicts
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.db.models.v2_models import (
@@ -17,10 +19,6 @@ from stock_service.db.models.v2_models import (
 from stock_service.domain.services.stock_utils import normalize_stock_code
 
 _STOCK_MASTER_FIELDS = {c.name for c in StockMaster.__table__.columns}
-
-
-def _rows_to_dicts(rows: Sequence) -> list[dict]:
-    return [{c.name: getattr(r, c.name) for c in r.__table__.columns} for r in rows]
 
 
 def _derive_stock_fields(stock_code: str, stock_name: str) -> dict:
