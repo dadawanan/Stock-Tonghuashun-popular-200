@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -29,6 +29,15 @@ logger.info(f"允许的前端域名: {allowed_origins}")
 
 
 app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """统一 HTTPException 响应格式为 ApiResponse 结构"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.status_code, "msg": str(exc.detail), "data": None},
+    )
 
 
 @app.exception_handler(Exception)
