@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from stock_service.api.dependencies import lifespan
 from stock_service.api.routes.analysis import router as analysis_router
@@ -27,6 +29,20 @@ logger.info(f"允许的前端域名: {allowed_origins}")
 
 
 app = FastAPI(title="Stock Analysis API", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """捕获所有未处理的异常，返回详细的错误信息而非通用的 Internal Server Error"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": -1,
+            "msg": str(exc),
+            "detail": traceback.format_exc(),
+        },
+    )
 
 # 配置 CORS 中间件
 app.add_middleware(

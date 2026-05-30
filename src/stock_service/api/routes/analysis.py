@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.api.dependencies import get_current_user, get_session
 from stock_service.application.services.analysis_service import run_analysis, store_analysis_results
-from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
+from stock_service.application.services.market_data_service import compute_and_store_indicators, run_fetch_pipeline_for_rows
 from stock_service.application.services.pipeline_service import run_all_pipeline
 from stock_service.crud import v2_crud
 from stock_service.infrastructure.providers.market_data_hub import fetch_stock_name
@@ -91,4 +91,18 @@ async def api_run_all(current_user: dict = Depends(get_current_user), session: A
         return ApiResponse(data=await run_all_pipeline(session))
     except Exception as exc:
         logger.exception("run-all 失败")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/api/quant/indicators/compute", response_model=ApiResponse)
+async def api_compute_indicators(
+    current_user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse:
+    """手动触发技术指标计算（从 stock_daily 计算 ma5/ma20/rsi/macd 写入 stock_indicator）"""
+    try:
+        count = await compute_and_store_indicators(session)
+        return ApiResponse(code=0, msg="ok", data={"computed": count})
+    except Exception as exc:
+        logger.exception("计算指标失败")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -199,6 +199,52 @@ async def fetch_market_to_db(session: AsyncSession, stocks_df: pd.DataFrame, run
     return len(market_rows)
 
 
+async def compute_and_store_indicators(session: AsyncSession, stock_codes: list[str] | None = None) -> int:
+    """从 stock_daily 计算技术指标（ma5/ma20/rsi/macd）并写入 stock_indicator 表"""
+    from sqlalchemy import text
+
+    from stock_service.crud import quant_crud
+    from stock_service.quant.domain.indicators import TechnicalIndicators
+
+    # 获取有 stock_daily 数据的股票
+    if not stock_codes:
+        result = await session.execute(text(
+            "SELECT DISTINCT code FROM stock_daily ORDER BY code"
+        ))
+        stock_codes = [row[0] for row in result.fetchall()]
+
+    total = 0
+    for code in stock_codes:
+        rows = await quant_crud.get_stock_daily(session, code)
+        if len(rows) < 26:  # MACD 需要至少 26 天数据
+            continue
+
+        df = pd.DataFrame(rows).sort_values("trade_date")
+        close = df["close"].astype(float)
+
+        ma5 = TechnicalIndicators.ma(close, 5)
+        ma20 = TechnicalIndicators.ma(close, 20)
+        rsi = TechnicalIndicators.rsi(close)
+        macd_line, _, _ = TechnicalIndicators.macd(close)
+
+        # 只写最新一条指标
+        last = df.iloc[-1]
+        indicator_row = {
+            "code": code,
+            "trade_date": last["trade_date"],
+            "ma5": round(float(ma5.iloc[-1]), 4) if pd.notna(ma5.iloc[-1]) else None,
+            "ma20": round(float(ma20.iloc[-1]), 4) if pd.notna(ma20.iloc[-1]) else None,
+            "rsi": round(float(rsi.iloc[-1]), 4) if pd.notna(rsi.iloc[-1]) else None,
+            "macd": round(float(macd_line.iloc[-1]), 4) if pd.notna(macd_line.iloc[-1]) else None,
+        }
+        await quant_crud.batch_upsert_stock_indicator(session, [indicator_row])
+        total += 1
+
+    await session.flush()
+    print(f"[indicators] 计算了 {total} 只股票的技术指标")
+    return total
+
+
 async def run_fetch_pipeline_for_rows(session: AsyncSession, stock_rows: list[dict[str, Any]], *, run_type: str = "fetch", source: str = "ths_pywencai") -> dict[str, Any]:
     stocks_df = pd.DataFrame(stock_rows)
     if stocks_df.empty:

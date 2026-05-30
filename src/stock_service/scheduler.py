@@ -27,6 +27,7 @@ from stock_service.application.services.market_data_service import run_fetch_pip
 from stock_service.application.services.popularity_service import run_popularity_pipeline
 from stock_service.crud import quant_crud
 from stock_service.db.database import AsyncSessionFactory
+from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
 from stock_service.quant.application.sim_trading_engine import SimTradingEngine
 from stock_service.quant.application.strategy_engine import (
     BreakoutStrategy,
@@ -122,6 +123,13 @@ async def run_pipeline() -> None:
 
             # 更新人气榜股票的日线数据
             await update_popularity_daily_data()
+
+            # 计算技术指标
+            from stock_service.application.services.market_data_service import compute_and_store_indicators
+            async with AsyncSessionFactory() as session:
+                indicator_count = await compute_and_store_indicators(session)
+                await session.commit()
+                logger.info(f"[indicators] 计算了 {indicator_count} 只股票的技术指标")
 
             # 自动执行模拟盘交易
             await auto_trade_for_accounts(session, new_entries)
@@ -229,17 +237,44 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                 # 获取最新人气榜数据
                 popularity_data = await quant_crud.get_latest_popularity_data(session)
 
+                stock_codes = [entry["stock_code"] for entry in new_entries]
+
+                # 填充策略上下文数据（行情、指标、分析结果）
+                market_data: dict[str, dict] = {}
+                indicators: dict[str, dict] = {}
+                trade_date = datetime.now().date()
+
+                for code in stock_codes:
+                    daily = await quant_crud.get_stock_daily(
+                        session, code, start_date=trade_date, end_date=trade_date,
+                    )
+                    if daily:
+                        market_data[code] = {
+                            k: float(v) if isinstance(v, Decimal) else v
+                            for k, v in daily[0].items()
+                        }
+
+                    ind = await quant_crud.get_stock_indicator(
+                        session, code, trade_date=trade_date,
+                    )
+                    if ind:
+                        indicators[code] = {
+                            k: float(v) for k, v in ind.items()
+                            if isinstance(v, (int, float, Decimal)) and k not in ("id",)
+                        }
+
+                adapter = AnalysisAdapter(session)
+                analysis = await adapter.get_analysis_signals(stock_codes)
+
                 # 构建策略上下文
                 context = StrategyContext(
-                    trade_date=datetime.now().date(),
-                    market_data={},
-                    indicators={},
-                    analysis={},
+                    trade_date=trade_date,
+                    market_data=market_data,
+                    indicators=indicators,
+                    analysis=analysis,
                     popularity=popularity_data,
                     positions={},
                 )
-
-                stock_codes = [entry["stock_code"] for entry in new_entries]
 
                 # 运行所有策略，收集信号
                 all_signals: dict[str, dict[str, list]] = {}  # code -> {buy: [...], sell: [...]}

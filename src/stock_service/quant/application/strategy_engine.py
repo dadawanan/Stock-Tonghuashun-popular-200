@@ -736,3 +736,18 @@ class GridStrategy(BaseStrategy):
                 ))
 
         return signals
+
+
+# ── Global engine instance with all built-in strategies registered ──
+
+engine = StrategyEngine()
+engine.register("popularity", PopularityStrategy())
+engine.register("sentiment", SentimentStrategy())
+engine.register("technical", TechnicalStrategy())
+engine.register("multi_factor", MultiFactorStrategy())
+engine.register("volume_price", VolumePriceStrategy())
+engine.register("momentum", MomentumStrategy())
+engine.register("mean_reversion", MeanReversionStrategy())
+engine.register("fund_flow", FundFlowStrategy())
+engine.register("breakout", BreakoutStrategy())
+engine.register("grid", GridStrategy())

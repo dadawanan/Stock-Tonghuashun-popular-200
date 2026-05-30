@@ -617,6 +617,26 @@ async def batch_upsert_stock_daily(session: AsyncSession, rows: list[dict]) -> i
     return len(rows)
 
 
+async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    for row in rows:
+        stmt = pg_insert(StockIndicator).values(**row)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_stock_indicator_code_date",
+            set_={
+                "ma5": stmt.excluded.ma5,
+                "ma20": stmt.excluded.ma20,
+                "rsi": stmt.excluded.rsi,
+                "macd": stmt.excluded.macd,
+                "updated_at": func.now(),
+            },
+        )
+        await session.execute(stmt)
+    await session.flush()
+    return len(rows)
+
+
 # ── V2 CRUD extensions (for quant module) ──
 
 

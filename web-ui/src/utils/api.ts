@@ -266,6 +266,9 @@ export const quantApi = {
 
   deleteStrategy: (id: number) => http.delete(`/api/quant/strategies/${id}`),
 
+  previewSignals: (data?: { strategy_ids?: number[]; max_stocks?: number }) =>
+    http.post<any>('/api/quant/strategies/signals/preview', data || {}),
+
   // Backtest
   runBacktest: (data: {
     strategy_id: number;
