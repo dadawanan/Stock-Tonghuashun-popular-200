@@ -623,6 +623,7 @@ async def batch_upsert_stock_indicator(session: AsyncSession, rows: list[dict]) 
                 "macd": stmt.excluded.macd,
                 "boll_upper": stmt.excluded.boll_upper,
                 "boll_lower": stmt.excluded.boll_lower,
+                "atr": stmt.excluded.atr,
                 "updated_at": func.now(),
             },
         )

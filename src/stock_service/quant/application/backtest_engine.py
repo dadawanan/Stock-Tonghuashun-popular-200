@@ -147,8 +147,9 @@ class BacktestEngine:
                 if price < pos.lowest_price or pos.lowest_price == 0:
                     pos.lowest_price = price
 
-                # 检查止损
-                stop_triggered, stop_reason = self._rules.check_stop_loss(pos, price, config)
+                # 检查止损（传入 ATR 值）
+                atr_value = context.indicators.get(code, {}).get("atr")
+                stop_triggered, stop_reason = self._rules.check_stop_loss(pos, price, config, atr_value=atr_value)
                 if stop_triggered and pos.available_quantity > 0:
                     codes_to_sell.append((code, stop_reason))
 

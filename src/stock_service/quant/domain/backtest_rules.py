@@ -73,9 +73,13 @@ class BacktestRules:
         return True, ""
 
     def check_stop_loss(
-        self, position: Position, current_price: float, config: BacktestConfig
+        self, position: Position, current_price: float, config: BacktestConfig,
+        atr_value: float | None = None,
     ) -> tuple[bool, str]:
         """检查止损条件
+
+        Args:
+            atr_value: 当前股票的 ATR 值（从 indicators 获取），为 None 则跳过 ATR 止损
 
         Returns:
             (是否触发止损, 触发原因)
@@ -86,7 +90,13 @@ class BacktestRules:
         if config.stop_loss_pct < 0 and pnl_pct <= config.stop_loss_pct:
             return True, f"固定止损({config.stop_loss_pct:.0%})"
 
-        # 2. 移动止损（从最高点回撤）
+        # 2. ATR 止损（买入价 - N 倍 ATR）
+        if config.atr_stop_multiplier > 0 and atr_value and atr_value > 0:
+            atr_stop_price = position.avg_price - atr_value * config.atr_stop_multiplier
+            if current_price <= atr_stop_price:
+                return True, f"ATR止损(买入价{position.avg_price:.2f} - {config.atr_stop_multiplier}×ATR{atr_value:.2f} = {atr_stop_price:.2f})"
+
+        # 3. 移动止损（从最高点回撤）
         if config.trailing_stop_pct > 0 and position.highest_price > 0:
             drop_from_high = (current_price - position.highest_price) / position.highest_price
             if drop_from_high <= -config.trailing_stop_pct:

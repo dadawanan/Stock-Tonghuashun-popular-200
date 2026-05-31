@@ -69,6 +69,7 @@ class StockIndicator(Base):
     macd: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     boll_upper: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     boll_lower: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    atr: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

@@ -271,8 +271,13 @@ class SimTradingEngine:
                 "pnl_pct": Decimal(str(round(pnl_pct, 4))),
             })
 
+            # 获取 ATR 值
+            from stock_service.crud import quant_crud
+            ind = await quant_crud.get_stock_indicator(self._session, pos["code"])
+            atr_value = float(ind["atr"]) if ind and ind.get("atr") else None
+
             # 检查止损
-            stop_triggered, stop_reason = rules.check_stop_loss(position, close_price, config)
+            stop_triggered, stop_reason = rules.check_stop_loss(position, close_price, config, atr_value=atr_value)
             if stop_triggered:
                 triggered_stop_loss.append({"code": pos["code"], "reason": stop_reason})
 
