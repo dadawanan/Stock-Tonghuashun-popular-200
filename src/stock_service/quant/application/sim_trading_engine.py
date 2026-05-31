@@ -70,6 +70,15 @@ class SimTradingEngine:
         if account["status"] != "active":
             raise ValueError("Account is not active")
 
+        # 检查最大回撤 — 超限则拒绝买入
+        total_assets = float(account.get("total_assets", 0))
+        peak_assets = float(account.get("peak_assets") or total_assets)
+        if peak_assets > 0:
+            drawdown = (total_assets - peak_assets) / peak_assets
+            max_dd = (account.get("config") or {}).get("max_drawdown_pct", -0.20)
+            if drawdown <= max_dd:
+                raise ValueError(f"账户回撤{drawdown:.1%}超过限制{max_dd:.0%}，暂停买入")
+
         # Get real-time price from Tencent
         try:
             exec_price = await asyncio.to_thread(fetch_realtime_price, code)
@@ -303,6 +312,13 @@ class SimTradingEngine:
         drawdown_ok, drawdown_reason = rules.check_account_drawdown(
             total_assets, peak_assets, config
         )
+
+        # 回撤超限 → 暂停账户，禁止后续交易
+        if not drawdown_ok:
+            await quant_crud.update_sim_account(self._session, account_id, {
+                "status": "drawdown_halt",
+            })
+            logger.warning(f"[settlement] 账户 {account_id} 回撤超限，暂停交易: {drawdown_reason}")
 
         return {
             "stop_loss": triggered_stop_loss,

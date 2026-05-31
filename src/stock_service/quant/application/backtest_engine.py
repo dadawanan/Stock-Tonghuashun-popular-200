@@ -90,8 +90,9 @@ class BacktestEngine:
 
                 if signal.signal_type == SignalType.BUY:
                     total_assets = cash + sum(p.market_value for p in positions.values())
+                    atr_value = context.indicators.get(signal.code, {}).get("atr")
                     qty = self._risk.calculate_buy_quantity(
-                        price, cash, total_assets, config
+                        price, cash, total_assets, config, atr_value=atr_value
                     )
                     if qty <= 0:
                         continue
@@ -271,6 +272,9 @@ class BacktestEngine:
         analysis = await analysis_adapter.get_analysis_signals(stock_codes)
         popularity = await analysis_adapter.get_popularity_data(stock_codes, trade_date)
 
+        from stock_service.quant.domain.market_regime import detect_market_regime
+        market_regime = await detect_market_regime(self._session)
+
         return StrategyContext(
             trade_date=trade_date,
             market_data=market_data,
@@ -278,6 +282,7 @@ class BacktestEngine:
             analysis=analysis,
             popularity=popularity,
             positions={c: {"quantity": p.quantity, "avg_price": p.avg_price} for c, p in positions.items()},
+            market_regime=market_regime,
         )
 
     def _calculate_metrics(

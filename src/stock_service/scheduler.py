@@ -312,7 +312,15 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
 
                             if signal.signal_type == SignalType.BUY:
                                 total_assets = float(account.get("total_assets", 0))
-                                max_amount = total_assets * max_position_pct * signal.score
+                                # 波动率调整：ATR 高则减仓，低则加仓
+                                adjusted_pct = max_position_pct
+                                ind = indicators.get(signal.code, {})
+                                atr_val = ind.get("atr")
+                                if atr_val and current_price > 0:
+                                    vol_pct = atr_val / current_price
+                                    vol_ratio = max(0.5, min(1.5, 0.03 / vol_pct))
+                                    adjusted_pct *= vol_ratio
+                                max_amount = total_assets * adjusted_pct * signal.score
                                 quantity = int(max_amount / current_price / 100) * 100
                                 if quantity < 100:
                                     logger.info(f"[auto-trade] {signal.code} 计算数量不足100股，跳过挂单")
@@ -352,7 +360,14 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                                     continue
 
                                 total_assets = float(account.get("total_assets", 0))
-                                max_amount = total_assets * max_position_pct * signal.score
+                                adjusted_pct = max_position_pct
+                                ind = indicators.get(signal.code, {})
+                                atr_val = ind.get("atr")
+                                if atr_val and current_price > 0:
+                                    vol_pct = atr_val / current_price
+                                    vol_ratio = max(0.5, min(1.5, 0.03 / vol_pct))
+                                    adjusted_pct *= vol_ratio
+                                max_amount = total_assets * adjusted_pct * signal.score
                                 quantity = int(max_amount / current_price / 100) * 100
                                 if quantity < 100:
                                     logger.info(f"[auto-trade] {signal.code} 计算数量不足100股，跳过")
