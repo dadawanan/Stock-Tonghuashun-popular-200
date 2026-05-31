@@ -23,6 +23,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "bcrypt<5",
     "python-jose[cryptography]>=3.3.0",
+    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
