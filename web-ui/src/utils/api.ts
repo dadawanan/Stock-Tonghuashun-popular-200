@@ -159,9 +159,16 @@ export interface BacktestResult {
   total_return: number | null;
   annual_return: number | null;
   max_drawdown: number | null;
+  max_drawdown_days: number | null;
   sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  calmar_ratio: number | null;
+  alpha: number | null;
+  beta: number | null;
+  information_ratio: number | null;
   win_rate: number | null;
   total_trades: number | null;
+  monthly_returns: Record<string, number> | null;
   created_at: string;
 }
 
@@ -405,4 +412,29 @@ export const quantApi = {
 
   suggestParams: (strategyType: string) =>
     http.get<Record<string, any[]>>(`/api/quant/optimizer/suggest/${strategyType}`),
+
+  walkForward: (data: {
+    strategy_id: number;
+    param_grid: Record<string, any[]>;
+    stock_codes?: string[];
+    start_date: string;
+    end_date: string;
+    train_days?: number;
+    test_days?: number;
+    step_days?: number;
+    initial_capital?: number;
+    metric?: string;
+  }) => http.post<{
+    windows: Array<{
+      window_id: number;
+      train_period: string;
+      test_period: string;
+      best_params: Record<string, any>;
+      train_metrics: Record<string, number>;
+      test_metrics: Record<string, number>;
+    }>;
+    avg_test_metrics: Record<string, number>;
+    best_params_per_window: Record<string, any>[];
+    stability_score: number;
+  }>('/api/quant/optimizer/walk-forward', data),
 };

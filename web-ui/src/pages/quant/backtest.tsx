@@ -423,6 +423,66 @@ export default function BacktestPage() {
                 />
               </Card>
             </Col>
+            <Col span={3}>
+              <Card>
+                <Statistic
+                  title="Sortino"
+                  value={Number(selectedResult.sortino_ratio) || 0}
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col span={3}>
+              <Card>
+                <Statistic
+                  title="Calmar"
+                  value={Number(selectedResult.calmar_ratio) || 0}
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col span={3}>
+              <Card>
+                <Statistic
+                  title="Alpha"
+                  value={
+                    selectedResult.alpha != null
+                      ? Number(selectedResult.alpha) * 100
+                      : 0
+                  }
+                  precision={2}
+                  suffix="%"
+                  styles={{ content: { color: Number(selectedResult.alpha) >= 0 ? "#3f8600" : "#cf1322" } }}
+                />
+              </Card>
+            </Col>
+            <Col span={3}>
+              <Card>
+                <Statistic
+                  title="Beta"
+                  value={Number(selectedResult.beta) || 0}
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col span={3}>
+              <Card>
+                <Statistic
+                  title="信息比率"
+                  value={Number(selectedResult.information_ratio) || 0}
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col span={3}>
+              <Card>
+                <Statistic
+                  title="回撤天数"
+                  value={selectedResult.max_drawdown_days || 0}
+                  suffix="天"
+                />
+              </Card>
+            </Col>
           </>
         )}
       </Row>

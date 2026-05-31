@@ -146,6 +146,9 @@ async def preview_signals(
 
     popularity = await quant_crud.get_latest_popularity_data(session)
 
+    from stock_service.quant.domain.market_regime import detect_market_regime
+    market_regime = await detect_market_regime(session)
+
     context = StrategyContext(
         trade_date=trade_date,
         market_data=market_data,
@@ -153,6 +156,7 @@ async def preview_signals(
         analysis=analysis,
         popularity=popularity,
         positions={},
+        market_regime=market_regime,
     )
 
     # 运行所有策略
