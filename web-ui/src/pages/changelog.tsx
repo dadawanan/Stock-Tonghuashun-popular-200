@@ -12,6 +12,33 @@ type LogEntry = {
 /** 按时间倒序：最新的在上面 */
 const CHANGELOG: LogEntry[] = [
   {
+    date: "2026-05-30",
+    added: [
+      "ATR 止损：基于 14 日 ATR 的动态止损，买入价 - N倍ATR 为止损线，高波动股止损更宽",
+      "最大回撤强制执行：回撤超限时自动暂停账户交易（状态变为 drawdown_halt），禁止买入",
+      "市场环境识别：基于沪深300 MA50/MA200 判断牛/熊/震荡市，策略自动调整买入门槛",
+      "波动率调整仓位：根据 ATR/价格 计算波动率，高波动减仓、低波动加仓，目标波动率 3%",
+      "更多绩效指标：Sortino、Calmar、Alpha/Beta、信息比率、回撤持续天数、月度收益分解",
+      "滚动前进优化（Walk-Forward）：多窗口训练+测试，防止过拟合，参数稳定性评分",
+      "技术指标补全：新增 ATR、布林带上下轨指标，计算并存储到 stock_indicator 表",
+      "数据维护工具：「补全数据」从腾讯拉取 K 线，「计算指标」计算 MA/RSI/MACD/布林/ATR",
+      "定时任务增强：9:25/14:30 自动执行补全数据 + 计算指标",
+      "分析规则配置化：关键词、评分权重、事件模式移至 config/analysis_rules.yaml",
+      "Alembic 数据库迁移：引入 Alembic 管理 schema 版本",
+      "错误响应格式统一：所有 HTTPException 返回 {code, msg, data} 结构",
+      "代码质量：print→logging、bare except修复、原始SQL清理、settings惰性化、StrategyEngine注册去重",
+    ],
+    fixed: [
+      "修复 strategy_engine 是模块不是实例导致的 500 错误",
+      "修复 stock_indicator 表从未写入数据的问题",
+      "修复 date.today() 导致查不到行情数据的问题",
+      "修复 stock_db_test 缺少唯一约束导致 upsert 失败",
+      "修复 ORM pg_insert + on_conflict 在某些环境下不兼容的问题",
+      "修复 500 错误泄露完整堆栈信息到客户端",
+      "修复补全数据连续失败不停止的问题",
+    ],
+  },
+  {
     date: "2026-05-24",
     added: [
       "量化交易模块全面上线：策略管理、回测系统、模拟盘、参数优化",
