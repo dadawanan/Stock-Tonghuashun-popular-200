@@ -295,16 +295,28 @@ class BacktestEngine:
         final_assets = nav_series[-1]["total_assets"]
         total_return = (final_assets - initial_capital) / initial_capital
 
+        # ── 最大回撤 + 回撤持续时间 ──
         peak = initial_capital
         max_dd = 0
+        dd_start = None
+        max_dd_days = 0
+        current_dd_days = 0
         for nav in nav_series:
             ta = nav["total_assets"]
             if ta > peak:
                 peak = ta
+                if current_dd_days > max_dd_days:
+                    max_dd_days = current_dd_days
+                current_dd_days = 0
+            else:
+                current_dd_days += 1
             dd = (peak - ta) / peak
             if dd > max_dd:
                 max_dd = dd
+        if current_dd_days > max_dd_days:
+            max_dd_days = current_dd_days
 
+        # ── 胜率 ──
         sell_trades = [t for t in trades if t["side"] == "sell"]
         wins = len([t for t in sell_trades if t.get("pnl", 0) > 0])
         win_rate = wins / len(sell_trades) if sell_trades else 0
@@ -312,23 +324,94 @@ class BacktestEngine:
         days = (end_date - start_date).days
         annual_return = ((1 + total_return) ** (365 / max(days, 1))) - 1 if days > 0 else 0
 
+        # ── 日收益率序列 ──
+        returns = []
+        benchmark_returns = []
         if len(nav_series) > 1:
-            returns = []
             for i in range(1, len(nav_series)):
                 prev = nav_series[i - 1]["total_assets"]
                 curr = nav_series[i]["total_assets"]
                 returns.append((curr - prev) / prev if prev else 0)
+                # 基准收益率
+                b_prev = nav_series[i - 1].get("benchmark_nav")
+                b_curr = nav_series[i].get("benchmark_nav")
+                if b_prev and b_curr and b_prev > 0:
+                    benchmark_returns.append((b_curr - b_prev) / b_prev)
+                else:
+                    benchmark_returns.append(0)
+
+        # ── Sharpe 比率 ──
+        if returns:
             mean_ret = statistics.mean(returns)
             std_ret = statistics.stdev(returns) if len(returns) > 1 else 1
             sharpe = (mean_ret * 252 - 0.03) / (std_ret * (252 ** 0.5)) if std_ret > 0 else 0
         else:
             sharpe = 0
 
+        # ── Sortino 比率（只惩罚下行波动）──
+        if returns:
+            downside = [r for r in returns if r < 0]
+            downside_std = statistics.stdev(downside) if len(downside) > 1 else (statistics.mean(downside) if downside else 0)
+            downside_std_annual = abs(downside_std) * (252 ** 0.5)
+            sortino = (annual_return - 0.03) / downside_std_annual if downside_std_annual > 0 else 0
+        else:
+            sortino = 0
+
+        # ── Calmar 比率（收益/最大回撤）──
+        calmar = annual_return / max_dd if max_dd > 0 else 0
+
+        # ── Alpha / Beta（相对基准）──
+        alpha = 0.0
+        beta = 0.0
+        if returns and benchmark_returns and len(returns) == len(benchmark_returns):
+            mean_port = statistics.mean(returns)
+            mean_bench = statistics.mean(benchmark_returns)
+            # Beta = Cov(port, bench) / Var(bench)
+            bench_var = statistics.variance(benchmark_returns) if len(benchmark_returns) > 1 else 0
+            if bench_var > 0:
+                covariance = sum((r - mean_port) * (b - mean_bench) for r, b in zip(returns, benchmark_returns)) / len(returns)
+                beta = covariance / bench_var
+                # Alpha = 年化超额收益
+                alpha = annual_return - (0.03 + beta * (mean_bench * 252 - 0.03))
+
+        # ── 信息比率（超额收益/跟踪误差）──
+        info_ratio = 0.0
+        if returns and benchmark_returns and len(returns) == len(benchmark_returns):
+            excess = [r - b for r, b in zip(returns, benchmark_returns)]
+            tracking_error = statistics.stdev(excess) * (252 ** 0.5) if len(excess) > 1 else 0
+            if tracking_error > 0:
+                info_ratio = (annual_return - statistics.mean(benchmark_returns) * 252) / tracking_error
+
+        # ── 月度收益分解 ──
+        monthly_returns: dict[str, float] = {}
+        if nav_series:
+            month_start_assets: dict[str, float] = {}
+            for nav in nav_series:
+                month_key = nav["trade_date"][:7]  # "2026-05"
+                if month_key not in month_start_assets:
+                    month_start_assets[month_key] = nav["total_assets"]
+            month_keys = sorted(month_start_assets.keys())
+            for i, mk in enumerate(month_keys):
+                start_a = month_start_assets[mk]
+                # 找这个月最后一天的 assets
+                end_a = start_a
+                for nav in nav_series:
+                    if nav["trade_date"][:7] == mk:
+                        end_a = nav["total_assets"]
+                monthly_returns[mk] = round((end_a - start_a) / start_a, 4) if start_a > 0 else 0
+
         return {
             "total_return": round(total_return, 4),
             "annual_return": round(annual_return, 4),
             "max_drawdown": round(max_dd, 4),
+            "max_drawdown_days": max_dd_days,
             "sharpe_ratio": round(sharpe, 4),
+            "sortino_ratio": round(sortino, 4),
+            "calmar_ratio": round(calmar, 4),
+            "alpha": round(alpha, 4),
+            "beta": round(beta, 4),
+            "information_ratio": round(info_ratio, 4),
             "win_rate": round(win_rate, 4),
             "total_trades": len(trades),
+            "monthly_returns": monthly_returns,
         }

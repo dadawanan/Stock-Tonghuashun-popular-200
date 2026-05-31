@@ -159,9 +159,16 @@ export interface BacktestResult {
   total_return: number | null;
   annual_return: number | null;
   max_drawdown: number | null;
+  max_drawdown_days: number | null;
   sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  calmar_ratio: number | null;
+  alpha: number | null;
+  beta: number | null;
+  information_ratio: number | null;
   win_rate: number | null;
   total_trades: number | null;
+  monthly_returns: Record<string, number> | null;
   created_at: string;
 }
 
