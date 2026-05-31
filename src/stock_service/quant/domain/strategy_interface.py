@@ -10,6 +10,13 @@ class SignalType(Enum):
     HOLD = "hold"
 
 
+class MarketRegime(Enum):
+    """市场环境分类"""
+    BULL = "bull"           # 牛市：MA50 > MA200，趋势向上
+    BEAR = "bear"           # 熊市：MA50 < MA200，趋势向下
+    SIDEWAYS = "sideways"   # 震荡：MA50 ≈ MA200，无明确趋势
+
+
 @dataclass
 class Signal:
     code: str
@@ -34,6 +41,8 @@ class StrategyContext:
     popularity: dict[str, dict]
     # Current positions: code -> {quantity, avg_price, ...}
     positions: dict[str, dict]
+    # 市场环境（基于沪深300 MA50/MA200）
+    market_regime: MarketRegime = MarketRegime.SIDEWAYS
 
 
 class BaseStrategy(ABC):

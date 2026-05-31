@@ -237,10 +237,19 @@ class TechnicalStrategy(BaseStrategy):
             buy_threshold = self._params.get("buy_threshold", 0.3)
             sell_threshold = self._params.get("sell_threshold", -0.3)
 
+            # 市场环境调整：熊市收紧买入、牛市放宽
+            from stock_service.quant.domain.strategy_interface import MarketRegime
+            regime = context.market_regime
+            if regime == MarketRegime.BEAR:
+                buy_threshold *= 1.5  # 熊市买入门槛提高 50%
+            elif regime == MarketRegime.BULL:
+                buy_threshold *= 0.8  # 牛市买入门槛降低 20%
+
             if score > buy_threshold:
+                env_tag = f"[{regime.value}]" if regime != MarketRegime.SIDEWAYS else ""
                 signals.append(Signal(
                     code=code, signal_type=SignalType.BUY,
-                    score=min(1.0, score), reason="; ".join(reasons),
+                    score=min(1.0, score), reason=f"{env_tag}" + "; ".join(reasons) if reasons else "",
                 ))
             elif score < sell_threshold:
                 signals.append(Signal(
@@ -442,12 +451,20 @@ class MomentumStrategy(BaseStrategy):
                 score = -min(1.0, abs(pct_change) / 10)
                 reasons.append(f"弱势动量(跌幅{pct_change:.1f}%)")
 
-            if score >= self._params["buy_threshold"]:
+            # 市场环境调整
+            from stock_service.quant.domain.strategy_interface import MarketRegime
+            buy_threshold = self._params["buy_threshold"]
+            sell_threshold = self._params["sell_threshold"]
+            if context.market_regime == MarketRegime.BEAR:
+                buy_threshold *= 1.5
+                sell_threshold *= 0.8
+
+            if score >= buy_threshold:
                 signals.append(Signal(
                     code=code, signal_type=SignalType.BUY,
                     score=min(1.0, score), reason="; ".join(reasons),
                 ))
-            elif score <= self._params["sell_threshold"]:
+            elif score <= sell_threshold:
                 signals.append(Signal(
                     code=code, signal_type=SignalType.SELL,
                     score=min(1.0, abs(score)), reason="; ".join(reasons),
