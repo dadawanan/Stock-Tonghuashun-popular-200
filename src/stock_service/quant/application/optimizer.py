@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock_service.crud import quant_crud
 from stock_service.quant.application.backtest_engine import BacktestEngine
-from stock_service.quant.application.strategy_engine import engine as _default_engine
+from stock_service.quant.application.strategy_engine import StrategyEngine, engine as _default_engine
 from stock_service.quant.domain.backtest_rules import BacktestConfig
 
 logger = logging.getLogger(__name__)
