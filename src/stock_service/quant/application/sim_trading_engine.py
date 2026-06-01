@@ -281,7 +281,6 @@ class SimTradingEngine:
             })
 
             # 获取 ATR 值
-            from stock_service.crud import quant_crud
             ind = await quant_crud.get_stock_indicator(self._session, pos["code"])
             atr_value = float(ind["atr"]) if ind and ind.get("atr") else None
 
