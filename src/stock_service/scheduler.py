@@ -287,16 +287,88 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                             reason=f"多策略共识卖出: {'; '.join(reasons)}",
                         ))
 
+                # ── 持仓扫描：检查已有持仓的止损/止盈 ──
+                from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
+                from stock_service.quant.domain.backtest_rules import BacktestConfig, BacktestRules, Position as BtPosition
+
+                account_config = account.get("config") or {}
+                max_position_pct = account_config.get("max_position_pct", 0.2)
+
+                bt_config = BacktestConfig(
+                    stop_loss_pct=account_config.get("stop_loss_pct", -0.08),
+                    trailing_stop_pct=account_config.get("trailing_stop_pct", 0),
+                    take_profit_pct=account_config.get("take_profit_pct", 0),
+                    trailing_take_profit_pct=account_config.get("trailing_take_profit_pct", 0),
+                    max_drawdown_pct=account_config.get("max_drawdown_pct", -0.20),
+                )
+                bt_rules = BacktestRules()
+
+                positions = await quant_crud.get_positions(session, account_id)
+                for pos in positions:
+                    pos_code = pos["code"]
+                    avg_price = float(pos["avg_price"])
+                    quantity = pos["quantity"]
+                    available = pos.get("available_quantity", 0)
+
+                    if available <= 0:
+                        continue  # T+1 不可卖
+
+                    current_price = await asyncio.to_thread(fetch_realtime_price, pos_code)
+                    if not current_price or current_price <= 0:
+                        continue
+
+                    pnl_pct = (current_price - avg_price) / avg_price if avg_price else 0
+
+                    bt_position = BtPosition(
+                        code=pos_code,
+                        quantity=quantity,
+                        avg_price=avg_price,
+                        available_quantity=available,
+                        market_value=current_price * quantity,
+                        pnl=(current_price - avg_price) * quantity,
+                        pnl_pct=pnl_pct,
+                        highest_price=float(pos.get("highest_price") or current_price),
+                        lowest_price=float(pos.get("lowest_price") or current_price),
+                    )
+
+                    # 获取 ATR
+                    ind = await quant_crud.get_stock_indicator(session, pos_code)
+                    atr_value = float(ind["atr"]) if ind and ind.get("atr") else None
+
+                    # 检查止损
+                    stop_hit, stop_reason = bt_rules.check_stop_loss(bt_position, current_price, bt_config, atr_value=atr_value)
+                    if stop_hit:
+                        try:
+                            sim_engine = SimTradingEngine(session)
+                            await sim_engine.sell(account_id, pos_code, available, current_price)
+                            logger.info(
+                                f"[auto-trade] 持仓止损 {pos_code} {available}股 "
+                                f"@ {current_price:.2f} (亏{pnl_pct:.1%}) - {stop_reason}"
+                            )
+                        except Exception as e:
+                            logger.error(f"[auto-trade] 持仓止损卖出 {pos_code} 失败: {e}")
+                        continue
+
+                    # 检查止盈
+                    tp_hit, tp_reason = bt_rules.check_take_profit(bt_position, current_price, bt_config)
+                    if tp_hit:
+                        try:
+                            sim_engine = SimTradingEngine(session)
+                            await sim_engine.sell(account_id, pos_code, available, current_price)
+                            logger.info(
+                                f"[auto-trade] 持仓止盈 {pos_code} {available}股 "
+                                f"@ {current_price:.2f} (盈{pnl_pct:.1%}) - {tp_reason}"
+                            )
+                        except Exception as e:
+                            logger.error(f"[auto-trade] 持仓止盈卖出 {pos_code} 失败: {e}")
+
+                # ── 新入场股信号处理（原有逻辑）──
                 if not consensus_signals:
-                    logger.info(f"[auto-trade] 账户「{account_name}」无共识信号")
+                    logger.info(f"[auto-trade] 账户「{account_name}」无新入场共识信号")
+                    await session.commit()
                     continue
 
                 logger.info(f"[auto-trade] 账户「{account_name}」生成 {len(consensus_signals)} 个共识信号")
-
-                # 获取价格并准备交易数据
-                from stock_service.infrastructure.providers.tencent_provider import fetch_realtime_price
-                account_config = account.get("config") or {}
-                max_position_pct = account_config.get("max_position_pct", 0.2)
 
                 # 检查是否在交易时间内
                 from stock_service.quant.domain.trading_calendar import is_trading_time as check_trading_time
