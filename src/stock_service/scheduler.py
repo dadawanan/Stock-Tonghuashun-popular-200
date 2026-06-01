@@ -105,8 +105,9 @@ async def run_pipeline() -> None:
                 await session.commit()
                 logger.info(f"[indicators] 计算了 {indicator_count} 只股票的技术指标")
 
-            # 自动执行模拟盘交易
-            await auto_trade_for_accounts(session, new_entries)
+            # 自动执行模拟盘交易（使用新 session，确保能读取到 daily/indicator 数据）
+            async with AsyncSessionFactory() as trade_session:
+                await auto_trade_for_accounts(trade_session, new_entries)
 
     except Exception as e:
         logger.error(f"流水线执行失败: {e}", exc_info=True)
