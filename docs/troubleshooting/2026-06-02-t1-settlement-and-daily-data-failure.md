@@ -264,7 +264,53 @@ async def run_catch_up_settlement() -> None:
 
 ---
 
-## 7. 经验教训
+## 7. 补结算副作用排查（第二轮）
+
+### 7.1 新故障现象
+
+部署补结算代码后，API `api/quant/sim/accounts` 返回空数据，所有账户消失。
+
+### 7.2 排查
+
+```sql
+SELECT id, account_name, status FROM sim_account WHERE user_id = 45;
+-- 结果: 所有 6 个账户 status = 'drawdown_halt'
+```
+
+### 7.3 根因
+
+`run_catch_up_settlement()` 调用了完整的 `daily_settlement()`，其中：
+
+1. `_update_total_assets()` 用实时价格重新计算总资产
+2. `check_account_drawdown()` 比较 total_assets 与 peak_assets
+3. 补结算对非交易日（5月31日周日）执行时，`get_stock_daily()` 无数据，回退到 `avg_price`
+4. 用成本价计算的总资产远低于 peak_assets，触发回撤止损
+5. 所有账户被设为 `drawdown_halt`，API 不再返回
+
+### 7.4 修复
+
+**数据层**：重置账户状态 + 清理错误快照
+
+```sql
+UPDATE sim_account SET status = 'active' WHERE status = 'drawdown_halt';
+DELETE FROM position_daily_snapshot WHERE trade_date = '2026-06-01';
+```
+
+**代码层**：简化 `run_catch_up_settlement()`，只做 T+1 解锁
+
+```python
+# 改为直接 SQL 更新，不调用 daily_settlement()
+result = await session.execute(
+    text("UPDATE position_account SET available_quantity = quantity "
+         "WHERE available_quantity < quantity")
+)
+```
+
+补结算只解锁 `available_quantity`，不执行止损/止盈/快照/回撤检查，避免用错误价格产生副作用。
+
+---
+
+## 8. 经验教训
 
 1. **PostgreSQL 类型系统严格**: `timestamp - integer` 不合法，必须使用 `date - integer` 或 `timestamp - interval`。ORM 的 `func.now()` 返回 `timestamp`，不等同于 `CURRENT_DATE`。
 
@@ -273,3 +319,7 @@ async def run_catch_up_settlement() -> None:
 3. **调度器需补执行机制**: 内存长驻进程的定时任务在进程重启后会丢失，需要在启动时检查并补偿遗漏的任务。
 
 4. **数据依赖链需端到端测试**: `stock_daily` → `stock_indicator` → 策略信号 → 交易执行，任何一环断裂都会导致下游全部失效。
+
+5. **补操作必须最小化**: 补执行历史任务时，只做必要的补偿（T+1 解锁），不要执行完整的业务逻辑（止损/止盈/快照/回撤），因为历史数据可能不完整，会导致错误的副作用。
+
+6. **`drawdown_halt` 是单向开关**: 一旦账户被设为 `drawdown_halt`，即使数据修复后也需要手动重置，API 不会返回此类账户。
