@@ -201,6 +201,7 @@ class SimTradingEngine:
             "commission": Decimal(str(round(
                 exec_price * quantity * config.get("commission_rate", 0.0003), 4
             ))),
+            "pnl": Decimal(str(round(pnl, 4))),
         })
 
         await self._update_total_assets(account_id)

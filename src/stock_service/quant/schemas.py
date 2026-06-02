@@ -135,6 +135,7 @@ class TradeOrderResponse(BaseModel):
     quantity: int | None
     status: str | None
     commission: float | None
+    pnl: float | None = None
     created_at: datetime
 
 

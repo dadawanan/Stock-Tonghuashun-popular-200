@@ -129,6 +129,7 @@ class TradeOrder(Base):
     trade_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     commission: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), default=0)
     slippage: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), default=0)
+    pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), default=0)
 
     __table_args__ = (
         _Index("idx_trade_order_account_time", "account_id", "created_at"),
