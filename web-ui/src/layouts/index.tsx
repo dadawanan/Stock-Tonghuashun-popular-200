@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "umi";
 
 import { authApi, clearAuthStorage, setStoredUsername } from "../utils";
+import ChatAssistant from "../components/ChatAssistant";
 import styles from "./index.less";
 
 const { Header, Content } = Layout;
@@ -118,6 +119,7 @@ export default function RootLayout() {
       <Content className={styles.content}>
         <Outlet />
       </Content>
+      <ChatAssistant />
     </Layout>
   );
 }

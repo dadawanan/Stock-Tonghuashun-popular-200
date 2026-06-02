@@ -438,3 +438,24 @@ export const quantApi = {
     stability_score: number;
   }>('/api/quant/optimizer/walk-forward', data),
 };
+
+// ── Chat Assistant ──
+
+export interface IntentAction {
+  type: 'navigate' | 'query' | 'analyze';
+  payload: Record<string, any>;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  actions?: IntentAction[];
+  isWelcome?: boolean;
+}
+
+export const chatApi = {
+  sendMessage: (message: string) =>
+    http.post<ChatMessage>('/api/chat/send', { message }, { showError: false }),
+};
