@@ -22,11 +22,14 @@ import sys
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
+from sqlalchemy import select
+
 from stock_service.application.services.analysis_service import run_and_store
 from stock_service.application.services.market_data_service import run_fetch_pipeline_for_rows
 from stock_service.application.services.popularity_service import run_popularity_pipeline
 from stock_service.crud import quant_crud
 from stock_service.db.database import AsyncSessionFactory
+from stock_service.db.models.quant_models import PositionDailySnapshot
 from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
 from stock_service.quant.application.sim_trading_engine import SimTradingEngine
 from stock_service.quant.application.strategy_engine import StrategyContext, engine as strategy_engine
@@ -555,6 +558,85 @@ async def check_pending_orders() -> None:
         logger.error(f"[pending-orders] 检查挂单失败: {e}", exc_info=True)
 
 
+async def get_latest_settlement_date() -> date | None:
+    """获取最近一次结算日期"""
+    from sqlalchemy import func
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            select(func.max(PositionDailySnapshot.trade_date))
+        )
+        return result.scalar()
+
+
+def get_missed_trading_days(last_settlement: date, today: date) -> list[date]:
+    """获取从 last_settlement 之后到 today 之间遗漏的交易日（周一到周五）
+
+    注意：仅按星期判断，不处理法定节假日。
+    """
+    missed = []
+    current = last_settlement + timedelta(days=1)
+    while current < today:
+        if current.weekday() < 5:  # 周一到周五
+            missed.append(current)
+        current += timedelta(days=1)
+    return missed
+
+
+async def run_catch_up_settlement() -> None:
+    """启动时补执行遗漏的每日结算"""
+    try:
+        last_settlement = await get_latest_settlement_date()
+        today = date.today()
+
+        if last_settlement is None:
+            logger.info("[catch-up] 没有历史结算记录，跳过补结算")
+            return
+
+        if last_settlement >= today:
+            logger.info(f"[catch-up] 最近结算日期 {last_settlement}，无需补结算")
+            return
+
+        missed_days = get_missed_trading_days(last_settlement, today)
+        if not missed_days:
+            logger.info(f"[catch-up] 最近结算 {last_settlement}，无遗漏交易日")
+            return
+
+        logger.warning(
+            f"[catch-up] 检测到 {len(missed_days)} 个遗漏交易日: "
+            f"{[d.isoformat() for d in missed_days]}，开始补结算..."
+        )
+
+        async with AsyncSessionFactory() as session:
+            accounts = await quant_crud.list_all_active_sim_accounts(session)
+            if not accounts:
+                logger.info("[catch-up] 没有活跃账户，跳过")
+                return
+
+            sim_engine = SimTradingEngine(session)
+            for missed_date in missed_days:
+                logger.info(f"[catch-up] 补结算 {missed_date}...")
+                for account in accounts:
+                    try:
+                        triggered = await sim_engine.daily_settlement(
+                            account["id"], missed_date
+                        )
+                        if triggered:
+                            logger.info(
+                                f"[catch-up] 账户「{account.get('account_name', account['id'])}」"
+                                f" {missed_date} 触发止损: {triggered}"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"[catch-up] 账户 #{account['id']} {missed_date} 补结算失败: {e}"
+                        )
+
+            await session.commit()
+            logger.info(f"[catch-up] 补结算完成: {len(missed_days)} 天, {len(accounts)} 个账户")
+
+    except Exception as e:
+        logger.error(f"[catch-up] 补结算执行失败: {e}", exc_info=True)
+
+
 async def run_daily_settlement() -> None:
     """对所有活跃模拟账户执行每日结算"""
     try:
@@ -622,6 +704,9 @@ async def scheduler_loop() -> None:
     logger.info(f"触发时间: {', '.join(t.strftime('%H:%M') for t in trigger_times)}")
     logger.info("仅在交易日（周一至周五）执行")
     logger.info("挂单检查: 交易时间内每60秒检查一次")
+
+    # 启动时检查并补执行遗漏的每日结算
+    await run_catch_up_settlement()
 
     while True:
         now = datetime.now()
