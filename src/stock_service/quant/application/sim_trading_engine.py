@@ -58,7 +58,7 @@ class SimTradingEngine:
 
     async def buy(
         self, account_id: int, code: str, quantity: int,
-        price: float | None = None, current_price: float | None = None,
+        price: float | None = None,
     ) -> dict:
         # Check trading time
         trading, reason = is_trading_time()
@@ -141,12 +141,14 @@ class SimTradingEngine:
 
     async def sell(
         self, account_id: int, code: str, quantity: int,
-        price: float | None = None, current_price: float | None = None,
+        price: float | None = None,
+        skip_checks: bool = False,
     ) -> dict:
-        # Check trading time
-        trading, reason = is_trading_time()
-        if not trading:
-            raise ValueError(f"非交易时间，无法下单：{reason}")
+        # Check trading time (结算时跳过)
+        if not skip_checks:
+            trading, reason = is_trading_time()
+            if not trading:
+                raise ValueError(f"非交易时间，无法下单：{reason}")
 
         account = await quant_crud.get_sim_account(self._session, account_id)
         if not account:
@@ -155,18 +157,23 @@ class SimTradingEngine:
         position = await quant_crud.get_position(self._session, account_id, code)
         if not position:
             raise ValueError(f"No position for {code}")
-        if quantity > position["available_quantity"]:
+        if not skip_checks and quantity > position["available_quantity"]:
             raise ValueError(
                 f"Insufficient available quantity: {position['available_quantity']} (T+1)"
             )
 
-        # Get real-time price from Tencent
-        try:
-            exec_price = await asyncio.to_thread(fetch_realtime_price, code)
-            if not exec_price:
-                raise ValueError(f"无法获取 {code} 的实时价格")
-        except Exception as e:
-            raise ValueError(f"获取实时价格失败：{e}")
+        # 获取执行价格：结算模式用传入的 price，否则取实时价
+        if skip_checks:
+            if price is None:
+                raise ValueError("skip_checks 模式下必须提供 price 参数")
+            exec_price = float(price)
+        else:
+            try:
+                exec_price = await asyncio.to_thread(fetch_realtime_price, code)
+                if not exec_price:
+                    raise ValueError(f"无法获取 {code} 的实时价格")
+            except Exception as e:
+                raise ValueError(f"获取实时价格失败：{e}")
 
         config = account.get("config") or {}
         revenue = self._calculate_sell_revenue(
@@ -288,12 +295,12 @@ class SimTradingEngine:
             ind = await quant_crud.get_stock_indicator(self._session, pos["code"])
             atr_value = float(ind["atr"]) if ind and ind.get("atr") else None
 
-            # 检查止损 → 触发则执行卖出
+            # 检查止损 → 触发则执行卖出（结算模式跳过交易时间/T+1检查）
             stop_triggered, stop_reason = rules.check_stop_loss(position, close_price, config, atr_value=atr_value)
             if stop_triggered:
                 triggered_stop_loss.append({"code": pos["code"], "reason": stop_reason})
                 try:
-                    await self.sell(account_id, pos["code"], pos["quantity"], close_price)
+                    await self.sell(account_id, pos["code"], pos["quantity"], close_price, skip_checks=True)
                     logger.info(
                         f"[settlement] 止损卖出 {pos['code']} {pos['quantity']}股 "
                         f"@ {close_price:.2f} - {stop_reason}"
@@ -307,7 +314,7 @@ class SimTradingEngine:
                 if tp_triggered:
                     triggered_take_profit.append({"code": pos["code"], "reason": tp_reason})
                     try:
-                        await self.sell(account_id, pos["code"], pos["quantity"], close_price)
+                        await self.sell(account_id, pos["code"], pos["quantity"], close_price, skip_checks=True)
                         logger.info(
                             f"[settlement] 止盈卖出 {pos['code']} {pos['quantity']}股 "
                             f"@ {close_price:.2f} - {tp_reason}"
