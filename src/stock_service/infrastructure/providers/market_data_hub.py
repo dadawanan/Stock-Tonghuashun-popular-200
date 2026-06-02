@@ -13,6 +13,12 @@ from stock_service.infrastructure.providers.akshare_provider import (
 from stock_service.infrastructure.providers.eastmoney_provider import (
     fetch_latest_fund_flow as fetch_latest_fund_flow_eastmoney,
 )
+from stock_service.infrastructure.providers.tencent_provider import (
+    fetch_latest_fund_flow as fetch_latest_fund_flow_tencent,
+)
+from stock_service.infrastructure.providers.akshare_provider import (
+    fetch_latest_fund_flow as fetch_latest_fund_flow_akshare,
+)
 from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 from stock_service.infrastructure.providers.tencent_provider import (
     benchmark_pct_change as benchmark_pct_change_tencent,
@@ -88,8 +94,20 @@ def benchmark_pct_change(stock_code: str) -> float:
 
 
 def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
-    """获取资金流数据：东方财富 push2 实时接口。"""
-    return fetch_latest_fund_flow_eastmoney(stock_code)
+    """获取资金流数据：多源 fallback（东方财富 → 腾讯 → akshare）。"""
+    errors: list[str] = []
+    for provider_name, provider_fn in (
+        ("eastmoney", fetch_latest_fund_flow_eastmoney),
+        ("tencent", fetch_latest_fund_flow_tencent),
+        ("akshare", fetch_latest_fund_flow_akshare),
+    ):
+        try:
+            result = provider_fn(stock_code)
+            if result.get("main_net_inflow") is not None:
+                return result
+        except Exception as exc:
+            errors.append(f"{provider_name}: {exc}")
+    raise RuntimeError(f"所有资金流源均失败: {stock_code} :: {' | '.join(errors)}")
 
 
 def fetch_news_rows(stock_code: str, stock_name: str, max_news_per_stock: int = 20) -> list[dict[str, Any]]:

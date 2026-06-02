@@ -37,6 +37,14 @@ kill_port() {
 export APP_ENV="${1:-prod}"
 echo "[start] APP_ENV=${APP_ENV}"
 
+# 同步 Python 依赖
+if command -v uv >/dev/null 2>&1; then
+  echo "[start] uv sync ..."
+  uv sync --quiet --index-url https://mirrors.cloud.tencent.com/pypi/simple/
+else
+  echo "[start] 警告: 未找到 uv，跳过依赖同步"
+fi
+
 kill_port 8000
 
 # 删掉正确名称的应用

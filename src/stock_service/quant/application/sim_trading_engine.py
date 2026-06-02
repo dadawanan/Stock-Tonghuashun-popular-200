@@ -109,9 +109,11 @@ class SimTradingEngine:
                 (float(existing["avg_price"]) * existing["quantity"] + exec_price * quantity)
                 / new_qty
             )
+            # T+1: 保留原有可卖数量，新增份额锁定今日不可卖
             await quant_crud.update_position(self._session, account_id, code, {
                 "quantity": new_qty,
                 "avg_price": Decimal(str(round(new_avg, 4))),
+                "available_quantity": existing["available_quantity"],
             })
         else:
             await quant_crud.create_position(self._session, {
@@ -199,6 +201,7 @@ class SimTradingEngine:
             "commission": Decimal(str(round(
                 exec_price * quantity * config.get("commission_rate", 0.0003), 4
             ))),
+            "pnl": Decimal(str(round(pnl, 4))),
         })
 
         await self._update_total_assets(account_id)
@@ -281,19 +284,35 @@ class SimTradingEngine:
             })
 
             # 获取 ATR 值
-            from stock_service.crud import quant_crud
             ind = await quant_crud.get_stock_indicator(self._session, pos["code"])
             atr_value = float(ind["atr"]) if ind and ind.get("atr") else None
 
-            # 检查止损
+            # 检查止损 → 触发则执行卖出
             stop_triggered, stop_reason = rules.check_stop_loss(position, close_price, config, atr_value=atr_value)
             if stop_triggered:
                 triggered_stop_loss.append({"code": pos["code"], "reason": stop_reason})
+                try:
+                    await self.sell(account_id, pos["code"], pos["quantity"], close_price)
+                    logger.info(
+                        f"[settlement] 止损卖出 {pos['code']} {pos['quantity']}股 "
+                        f"@ {close_price:.2f} - {stop_reason}"
+                    )
+                except Exception as e:
+                    logger.error(f"[settlement] 止损卖出 {pos['code']} 失败: {e}")
 
-            # 检查止盈
-            tp_triggered, tp_reason = rules.check_take_profit(position, close_price, config)
-            if tp_triggered:
-                triggered_take_profit.append({"code": pos["code"], "reason": tp_reason})
+            # 检查止盈 → 触发则执行卖出（未被止损触发时才检查）
+            elif not stop_triggered:
+                tp_triggered, tp_reason = rules.check_take_profit(position, close_price, config)
+                if tp_triggered:
+                    triggered_take_profit.append({"code": pos["code"], "reason": tp_reason})
+                    try:
+                        await self.sell(account_id, pos["code"], pos["quantity"], close_price)
+                        logger.info(
+                            f"[settlement] 止盈卖出 {pos['code']} {pos['quantity']}股 "
+                            f"@ {close_price:.2f} - {tp_reason}"
+                        )
+                    except Exception as e:
+                        logger.error(f"[settlement] 止盈卖出 {pos['code']} 失败: {e}")
 
         if snapshots:
             await quant_crud.batch_insert_position_snapshots(self._session, snapshots)

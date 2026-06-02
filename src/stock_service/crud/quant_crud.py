@@ -853,7 +853,7 @@ async def get_missing_popularity_codes(session: AsyncSession, limit: int = 200) 
     latest_pop = select(func.max(PopularitySnapshot.trade_date)).scalar_subquery()
     recent_codes = (
         select(StockDaily.code.distinct())
-        .where(StockDaily.trade_date >= func.now() - 3)
+        .where(StockDaily.trade_date >= func.current_date() - 3)
         .scalar_subquery()
     )
     result = await session.execute(

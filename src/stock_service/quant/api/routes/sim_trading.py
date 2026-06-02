@@ -166,18 +166,25 @@ async def get_trade_analysis(
     avg_loss = sum(float(o.get("pnl", 0) or 0) for o in losses) / len(losses) if losses else 0
 
     # 计算平均持仓天数（简化：用订单时间差估算）
+    from datetime import datetime as _dt
     holding_days = []
     for buy in buy_orders:
         # 找对应的卖出
         for sell in sell_orders:
             if sell.get("code") == buy.get("code") and sell.get("created_at", "") > buy.get("created_at", ""):
-                buy_time = buy.get("created_at", "")
-                sell_time = sell.get("created_at", "")
+                buy_time = buy.get("created_at")
+                sell_time = sell.get("created_at")
                 if buy_time and sell_time:
-                    from datetime import datetime
                     try:
-                        bt = datetime.fromisoformat(buy_time.replace("Z", "+00:00"))
-                        st = datetime.fromisoformat(sell_time.replace("Z", "+00:00"))
+                        # created_at 可能是 datetime 对象或字符串
+                        if isinstance(buy_time, _dt):
+                            bt = buy_time
+                        else:
+                            bt = _dt.fromisoformat(str(buy_time).replace("Z", "+00:00"))
+                        if isinstance(sell_time, _dt):
+                            st = sell_time
+                        else:
+                            st = _dt.fromisoformat(str(sell_time).replace("Z", "+00:00"))
                         holding_days.append((st - bt).days)
                     except (ValueError, TypeError):
                         pass

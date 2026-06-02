@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Any, Sequence
 
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from stock_service.crud.utils import _rows_to_dicts
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,26 +83,59 @@ async def get_all_stocks(session: AsyncSession) -> list[dict]:
 
 
 async def upsert_stocks(session: AsyncSession, rows: list[dict]) -> int:
-    count = 0
+    """使用 PostgreSQL ON CONFLICT DO UPDATE 批量 upsert stock_master，返回新增行数。"""
+    if not rows:
+        return 0
+
+    # 1. 内存去重：防止 rows 内部自带重复的 stock_code 导致 Postgres 报错
+    seen_codes: set[str] = set()
+    unique_rows: list[dict] = []
     for r in rows:
+        code = r.get("stock_code")
+        if code and code not in seen_codes:
+            seen_codes.add(code)
+            unique_rows.append(r)
+
+    # 2. 预计算衍生字段 + 清洗字段，一次性构建所有 values
+    value_rows: list[dict] = []
+    all_codes: list[str] = []
+
+    for r in unique_rows:
         stock_code = r["stock_code"]
-        existing = await session.get(StockMaster, stock_code)
+        all_codes.append(stock_code)
+
         derived = _derive_stock_fields(stock_code, str(r.get("stock_name", "")))
-        if existing:
-            existing.stock_name = r.get("stock_name", existing.stock_name)
-            existing.market = derived["market"]
-            existing.market_code = str(r["market_code"]) if r.get("market_code") is not None else existing.market_code
-            existing.code_digits = derived["code_digits"]
-            existing.is_st = derived["is_st"]
-        else:
-            model_fields = {k: v for k, v in r.items() if k in _STOCK_MASTER_FIELDS}
-            model_fields.setdefault("market", derived["market"])
-            model_fields.setdefault("code_digits", derived["code_digits"])
-            model_fields.setdefault("is_st", derived["is_st"])
-            model_fields["market_code"] = str(model_fields["market_code"]) if model_fields.get("market_code") is not None else None
-            session.add(StockMaster(**model_fields))
-            count += 1
-    return count
+        model_fields = {k: v for k, v in r.items() if k in _STOCK_MASTER_FIELDS}
+        model_fields["market"] = derived["market"]
+        model_fields["code_digits"] = derived["code_digits"]
+        model_fields["is_st"] = derived["is_st"]
+        model_fields["market_code"] = str(model_fields["market_code"]) if model_fields.get("market_code") is not None else None
+        model_fields.setdefault("status", "active")
+        value_rows.append(model_fields)
+
+    # 3. 先查询已存在的 stock_code，用于统计新增数量
+    existing_result = await session.execute(
+        select(StockMaster.stock_code).where(StockMaster.stock_code.in_(all_codes))
+    )
+    existing_set = {row[0] for row in existing_result.all()}
+
+    # 4. 构建并执行批量 Upsert 语句
+    stmt = pg_insert(StockMaster).values(value_rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_code"],
+        set_={
+            "stock_name": stmt.excluded.stock_name,
+            "market": stmt.excluded.market,
+            "market_code": stmt.excluded.market_code,
+            "code_digits": stmt.excluded.code_digits,
+            "is_st": stmt.excluded.is_st,
+            "updated_at": func.now(),
+        },
+    )
+    await session.execute(stmt)
+
+    # 5. 计算真正新增的行数
+    return sum(1 for c in all_codes if c not in existing_set)
 
 
 # ── PopularitySnapshot ──
