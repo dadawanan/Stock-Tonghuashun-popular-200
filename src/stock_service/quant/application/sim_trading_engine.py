@@ -109,9 +109,11 @@ class SimTradingEngine:
                 (float(existing["avg_price"]) * existing["quantity"] + exec_price * quantity)
                 / new_qty
             )
+            # T+1: 保留原有可卖数量，新增份额锁定今日不可卖
             await quant_crud.update_position(self._session, account_id, code, {
                 "quantity": new_qty,
                 "avg_price": Decimal(str(round(new_avg, 4))),
+                "available_quantity": existing["available_quantity"],
             })
         else:
             await quant_crud.create_position(self._session, {

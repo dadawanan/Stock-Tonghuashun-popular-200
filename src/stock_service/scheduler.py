@@ -720,14 +720,17 @@ async def run_catch_up_settlement() -> None:
         )
 
         async with AsyncSessionFactory() as session:
-            # 直接解锁所有 available_quantity < quantity 的持仓
+            # 只解锁昨日及之前买入的持仓（updated_at < 今天 00:00）
+            # 今日买入的持仓（updated_at >= 今天）保持 T+1 锁定
             from stock_service.db.models.quant_models import PositionAccount
-            from sqlalchemy import update as sa_update
+            from sqlalchemy import update as sa_update, func as sa_func
 
+            today_start = datetime.combine(today, datetime.min.time())
             result = await session.execute(
                 sa_update(PositionAccount)
                 .values(available_quantity=PositionAccount.quantity)
                 .where(PositionAccount.available_quantity < PositionAccount.quantity)
+                .where(PositionAccount.updated_at < today_start)
             )
             unlocked = result.rowcount  # type: ignore[attr-defined]
             await session.commit()
