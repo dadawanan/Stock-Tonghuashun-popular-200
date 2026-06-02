@@ -397,7 +397,7 @@ async def list_sim_accounts(session: AsyncSession, user_id: int) -> list[dict]:
     return _rows_to_dicts(result.scalars().all())
 
 
-_SIM_ACCOUNT_ALLOWED = {"account_name", "current_capital", "total_assets", "status", "strategy_id", "strategy_ids", "config"}
+_SIM_ACCOUNT_ALLOWED = {"account_name", "current_capital", "total_assets", "peak_assets", "status", "strategy_id", "strategy_ids", "config"}
 
 
 async def update_sim_account(session: AsyncSession, account_id: int, data: dict) -> dict | None:

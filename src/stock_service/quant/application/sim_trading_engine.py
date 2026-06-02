@@ -47,6 +47,7 @@ class SimTradingEngine:
             "initial_capital": Decimal(str(initial_capital)),
             "current_capital": Decimal(str(initial_capital)),
             "total_assets": Decimal(str(initial_capital)),
+            "peak_assets": Decimal(str(initial_capital)),
             "strategy_id": strategy_id,
             "config": default_config,
         })
@@ -319,9 +320,18 @@ class SimTradingEngine:
 
         await self._update_total_assets(account_id)
 
-        # 检查账户级回撤
+        # 检查账户级回撤 — 重新读取最新的 total_assets
+        account = await quant_crud.get_sim_account(self._session, account_id)
         total_assets = float(account.get("total_assets", 0))
-        peak_assets = float(account.get("peak_assets") or total_assets)
+
+        # 迁移：旧账户 peak_assets 为 NULL 时初始化为 total_assets
+        if account.get("peak_assets") is None:
+            await quant_crud.update_sim_account(self._session, account_id, {
+                "peak_assets": Decimal(str(round(total_assets, 2))),
+            })
+            peak_assets = total_assets
+        else:
+            peak_assets = float(account["peak_assets"])
         if total_assets > peak_assets:
             await quant_crud.update_sim_account(self._session, account_id, {
                 "peak_assets": Decimal(str(round(total_assets, 2))),
