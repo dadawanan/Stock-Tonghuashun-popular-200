@@ -216,67 +216,47 @@ class SimTradingEngine:
         return {**order, "pnl": round(pnl, 2)}
 
     async def daily_settlement(self, account_id: int, trade_date: date) -> dict:
-        """每日结算
+        """每日结算（收盘后执行）
 
-        Returns:
-            {"stop_loss": [...], "take_profit": [...], "drawdown_warning": bool}
+        职责：
+        1. 解锁 T+1 的可卖数量
+        2. 用收盘价创建持仓快照
+        3. 更新总资产
+        4. 检查账户级回撤
+
+        注意：止损止盈在盘中由 scheduler.auto_trade 实时检查，不在结算时执行。
         """
-        from stock_service.quant.domain.backtest_rules import BacktestConfig, BacktestRules, Position
+        from stock_service.quant.domain.backtest_rules import BacktestConfig, BacktestRules
 
         positions = await quant_crud.get_positions(self._session, account_id)
         account = await quant_crud.get_sim_account(self._session, account_id)
         config_data = account.get("config") or {}
 
-        # 构建 BacktestConfig
         config = BacktestConfig(
-            stop_loss_pct=config_data.get("stop_loss_pct", -0.08),
-            trailing_stop_pct=config_data.get("trailing_stop_pct", 0),
-            take_profit_pct=config_data.get("take_profit_pct", 0),
-            trailing_take_profit_pct=config_data.get("trailing_take_profit_pct", 0),
             max_drawdown_pct=config_data.get("max_drawdown_pct", -0.20),
         )
         rules = BacktestRules()
 
         snapshots = []
-        triggered_stop_loss = []
-        triggered_take_profit = []
 
         for pos in positions:
+            # 1. 解锁 T+1
             await quant_crud.update_position(self._session, account_id, pos["code"], {
                 "available_quantity": pos["quantity"],
             })
 
+            # 2. 用收盘价创建快照
             daily = await quant_crud.get_stock_daily(
                 self._session, pos["code"],
                 start_date=trade_date, end_date=trade_date,
             )
             if not daily:
-                # 今天数据还没入库，取最近一条
                 daily = await quant_crud.get_stock_daily(self._session, pos["code"])
             close_price = float(daily[0]["close"]) if daily else float(pos["avg_price"])
 
             market_value = close_price * pos["quantity"]
             pnl = (close_price - float(pos["avg_price"])) * pos["quantity"]
             pnl_pct = (close_price - float(pos["avg_price"])) / float(pos["avg_price"]) if pos["avg_price"] else 0
-
-            # 构建 Position 对象用于止盈止损判断
-            position = Position(
-                code=pos["code"],
-                quantity=pos["quantity"],
-                avg_price=float(pos["avg_price"]),
-                available_quantity=pos["quantity"],
-                market_value=market_value,
-                pnl=pnl,
-                pnl_pct=pnl_pct,
-                highest_price=float(pos.get("highest_price") or close_price),
-                lowest_price=float(pos.get("lowest_price") or close_price),
-            )
-
-            # 更新最高/最低价
-            if close_price > position.highest_price:
-                position.highest_price = close_price
-            if close_price < position.lowest_price:
-                position.lowest_price = close_price
 
             snapshots.append({
                 "account_id": account_id,
@@ -291,47 +271,16 @@ class SimTradingEngine:
                 "pnl_pct": Decimal(str(round(pnl_pct, 4))),
             })
 
-            # 获取 ATR 值
-            ind = await quant_crud.get_stock_indicator(self._session, pos["code"])
-            atr_value = float(ind["atr"]) if ind and ind.get("atr") else None
-
-            # 检查止损 → 触发则执行卖出（结算模式跳过交易时间/T+1检查）
-            stop_triggered, stop_reason = rules.check_stop_loss(position, close_price, config, atr_value=atr_value)
-            if stop_triggered:
-                triggered_stop_loss.append({"code": pos["code"], "reason": stop_reason})
-                try:
-                    await self.sell(account_id, pos["code"], pos["quantity"], close_price, skip_checks=True)
-                    logger.info(
-                        f"[settlement] 止损卖出 {pos['code']} {pos['quantity']}股 "
-                        f"@ {close_price:.2f} - {stop_reason}"
-                    )
-                except Exception as e:
-                    logger.error(f"[settlement] 止损卖出 {pos['code']} 失败: {e}")
-
-            # 检查止盈 → 触发则执行卖出（未被止损触发时才检查）
-            elif not stop_triggered:
-                tp_triggered, tp_reason = rules.check_take_profit(position, close_price, config)
-                if tp_triggered:
-                    triggered_take_profit.append({"code": pos["code"], "reason": tp_reason})
-                    try:
-                        await self.sell(account_id, pos["code"], pos["quantity"], close_price, skip_checks=True)
-                        logger.info(
-                            f"[settlement] 止盈卖出 {pos['code']} {pos['quantity']}股 "
-                            f"@ {close_price:.2f} - {tp_reason}"
-                        )
-                    except Exception as e:
-                        logger.error(f"[settlement] 止盈卖出 {pos['code']} 失败: {e}")
-
         if snapshots:
             await quant_crud.batch_insert_position_snapshots(self._session, snapshots)
 
+        # 3. 更新总资产
         await self._update_total_assets(account_id)
 
-        # 检查账户级回撤 — 重新读取最新的 total_assets
+        # 4. 检查账户级回撤
         account = await quant_crud.get_sim_account(self._session, account_id)
         total_assets = float(account.get("total_assets", 0))
 
-        # 迁移：旧账户 peak_assets 为 NULL 时初始化为 total_assets
         if account.get("peak_assets") is None:
             await quant_crud.update_sim_account(self._session, account_id, {
                 "peak_assets": Decimal(str(round(total_assets, 2))),
@@ -349,7 +298,6 @@ class SimTradingEngine:
             total_assets, peak_assets, config
         )
 
-        # 回撤超限 → 暂停账户，禁止后续交易
         if drawdown_triggered:
             await quant_crud.update_sim_account(self._session, account_id, {
                 "status": "drawdown_halt",
@@ -357,8 +305,6 @@ class SimTradingEngine:
             logger.warning(f"[settlement] 账户 {account_id} 回撤超限，暂停交易: {drawdown_reason}")
 
         return {
-            "stop_loss": triggered_stop_loss,
-            "take_profit": triggered_take_profit,
             "drawdown_warning": drawdown_triggered,
             "drawdown_reason": drawdown_reason if drawdown_triggered else None,
         }

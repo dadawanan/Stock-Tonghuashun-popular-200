@@ -767,12 +767,12 @@ async def run_daily_settlement() -> None:
 
             for account in accounts:
                 try:
-                    triggered = await sim_engine.daily_settlement(account["id"], today)
+                    result = await sim_engine.daily_settlement(account["id"], today)
                     success_count += 1
-                    if triggered:
-                        logger.info(
+                    if result.get("drawdown_warning"):
+                        logger.warning(
                             f"[settlement] 账户「{account.get('account_name', account['id'])}」"
-                            f"触发止损: {triggered}"
+                            f"回撤超限: {result.get('drawdown_reason')}"
                         )
 
                     # 收盘后取消当天未成交的挂单
