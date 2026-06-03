@@ -12,7 +12,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import Index as _Index
-from sqlalchemy.dialects.postgresql import BIGINT, JSONB, VARCHAR
+from sqlalchemy.dialects.postgresql import ARRAY, BIGINT, JSONB, VARCHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from . import Base
@@ -284,6 +284,30 @@ class PendingOrder(Base):
     )
 
 
+class BacktestTask(Base):
+    __tablename__ = "backtest_task"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    celery_task_id: Mapped[Optional[str]] = mapped_column(VARCHAR(255), unique=True)
+    task_type: Mapped[str] = mapped_column(VARCHAR(32), nullable=False)
+    status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="pending")
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    progress: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
+    result: Mapped[Optional[dict]] = mapped_column(JSONB)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    backtest_ids: Mapped[Optional[list]] = mapped_column(ARRAY(BIGINT))
+    user_id: Mapped[Optional[int]] = mapped_column(BIGINT)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        _Index("idx_backtest_task_status", "status"),
+        _Index("idx_backtest_task_user", "user_id", "created_at"),
+    )
+
+
 __all__ = [
     "StockBasic",
     "StockDaily",
@@ -299,4 +323,5 @@ __all__ = [
     "PositionDailySnapshot",
     "FeedbackLog",
     "PendingOrder",
+    "BacktestTask",
 ]

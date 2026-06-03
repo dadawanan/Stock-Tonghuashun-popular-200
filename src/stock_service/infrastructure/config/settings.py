@@ -195,6 +195,10 @@ class Settings:
     def news_fetch_concurrency(self) -> int:
         return self._get("news_fetch_concurrency", lambda: _get_int_env("NEWS_FETCH_CONCURRENCY", "5"))  # type: ignore[return-value]
 
+    @property
+    def redis_url(self) -> str:
+        return self._get("redis_url", lambda: _get_required_env("REDIS_URL", "redis://localhost:6379/0"))  # type: ignore[return-value]
+
 
 settings = Settings()
 

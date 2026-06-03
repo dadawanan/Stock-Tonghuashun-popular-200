@@ -8,6 +8,7 @@ from stock_service.crud.utils import _rows_to_dicts
 from stock_service.db.models.quant_models import (
     BacktestDailyNav,
     BacktestResult,
+    BacktestTask,
     BacktestTrade,
     FeedbackLog,
     PendingOrder,
@@ -874,6 +875,101 @@ async def list_all_stock_codes(session: AsyncSession) -> list[str]:
     return [row[0] for row in result.all()]
 
 
+# ── BacktestTask ──
+
+
+async def create_task(session: AsyncSession, data: dict) -> dict:
+    task = BacktestTask(**data)
+    session.add(task)
+    await session.flush()
+    return _rows_to_dicts([task])[0]
+
+
+async def get_task(session: AsyncSession, task_id: int) -> dict | None:
+    result = await session.execute(select(BacktestTask).where(BacktestTask.id == task_id))
+    row = result.scalars().first()
+    return _rows_to_dicts([row])[0] if row else None
+
+
+async def get_task_by_celery_id(session: AsyncSession, celery_task_id: str) -> dict | None:
+    result = await session.execute(
+        select(BacktestTask).where(BacktestTask.celery_task_id == celery_task_id)
+    )
+    row = result.scalars().first()
+    return _rows_to_dicts([row])[0] if row else None
+
+
+async def list_tasks(
+    session: AsyncSession, user_id: int | None = None, status: str | None = None
+) -> list[dict]:
+    stmt = select(BacktestTask)
+    if user_id is not None:
+        stmt = stmt.where(BacktestTask.user_id == user_id)
+    if status:
+        stmt = stmt.where(BacktestTask.status == status)
+    result = await session.execute(stmt.order_by(BacktestTask.created_at.desc()))
+    return _rows_to_dicts(result.scalars().all())
+
+
+async def update_task_status(
+    session: AsyncSession, task_id: int, status: str, **fields
+) -> dict | None:
+    task = await session.get(BacktestTask, task_id)
+    if not task:
+        return None
+    task.status = status
+    for key, value in fields.items():
+        if hasattr(task, key):
+            setattr(task, key, value)
+    await session.flush()
+    return _rows_to_dicts([task])[0]
+
+
+async def update_task_progress(
+    session: AsyncSession, task_id: int, current: int, total: int, message: str = ""
+) -> None:
+    task = await session.get(BacktestTask, task_id)
+    if not task:
+        return
+    percent = round(current / total * 100, 1) if total > 0 else 0
+    task.progress = {"current": current, "total": total, "message": message, "percent": percent}
+    await session.flush()
+
+
+async def update_task_result(
+    session: AsyncSession, task_id: int, result: dict, backtest_ids: list[int] | None = None
+) -> None:
+    task = await session.get(BacktestTask, task_id)
+    if not task:
+        return
+    task.status = "success"
+    task.result = result
+    task.backtest_ids = backtest_ids
+    from sqlalchemy import func
+    task.finished_at = func.now()
+    await session.flush()
+
+
+async def update_task_error(session: AsyncSession, task_id: int, error: str) -> None:
+    task = await session.get(BacktestTask, task_id)
+    if not task:
+        return
+    task.status = "failed"
+    task.error = error
+    from sqlalchemy import func
+    task.finished_at = func.now()
+    await session.flush()
+
+
+async def delete_task(session: AsyncSession, task_id: int) -> bool:
+    task = await session.get(BacktestTask, task_id)
+    if not task:
+        return False
+    await session.delete(task)
+    await session.flush()
+    return True
+
+
 __all__ = [
     "get_stock_basic_by_code",
     "list_stock_basic",
@@ -910,4 +1006,13 @@ __all__ = [
     "get_latest_popularity",
     "get_latest_popularity_by_code",
     "get_latest_stock_analysis",
+    "create_task",
+    "get_task",
+    "get_task_by_celery_id",
+    "list_tasks",
+    "update_task_status",
+    "update_task_progress",
+    "update_task_result",
+    "update_task_error",
+    "delete_task",
 ]

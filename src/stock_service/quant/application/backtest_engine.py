@@ -1,5 +1,6 @@
 import logging
 import statistics
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 
@@ -35,8 +36,14 @@ class BacktestEngine:
         end_date: date,
         config: BacktestConfig,
         strategy_engine: StrategyEngine,
+        progress_cb: Callable[[int, int, str], None] | None = None,
     ) -> dict:
-        """Run backtest and return results."""
+        """Run backtest and return results.
+
+        Args:
+            progress_cb: Optional callback ``(current, total, message)`` invoked
+                after each trading date to report progress.
+        """
         strategy = await quant_crud.get_strategy(self._session, strategy_id)
         if not strategy:
             raise ValueError(f"Strategy {strategy_id} not found")
@@ -204,6 +211,12 @@ class BacktestEngine:
                 "position_value": position_value,
                 "benchmark_nav": benchmark_nav,
             })
+
+            if progress_cb:
+                progress_cb(
+                    len(nav_series), len(trading_dates),
+                    f"Processing {trade_date}",
+                )
 
         metrics = self._calculate_metrics(
             nav_series, trades, config.initial_capital, start_date, end_date

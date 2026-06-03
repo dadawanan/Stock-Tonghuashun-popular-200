@@ -12,6 +12,69 @@ from stock_service.schemas.responses import ApiResponse
 router = APIRouter(prefix="/api/quant/backtest", tags=["quant-backtest"])
 
 
+@router.post("/async/run", response_model=ApiResponse)
+async def async_run_backtest(
+    req: BacktestRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    """异步提交回测任务，立即返回 task_id"""
+    strategy = await quant_crud.get_strategy(session, req.strategy_id)
+    if not strategy:
+        raise HTTPException(404, "Strategy not found")
+
+    codes = req.stock_codes
+    if not codes:
+        from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
+        adapter = AnalysisAdapter(session)
+        codes = await adapter.get_latest_popularity_codes()
+
+    if not codes:
+        raise HTTPException(400, "No stock codes provided or found")
+
+    user_id = current_user.id
+
+    task = await quant_crud.create_task(session, {
+        "task_type": "backtest",
+        "status": "pending",
+        "params": {
+            "strategy_id": req.strategy_id,
+            "stock_codes": codes,
+            "start_date": req.start_date.isoformat(),
+            "end_date": req.end_date.isoformat(),
+            "initial_capital": req.initial_capital,
+            "commission_rate": req.commission_rate,
+            "stamp_tax": req.stamp_tax,
+            "slippage": req.slippage,
+            "max_position_pct": req.max_position_pct,
+            "max_holdings": req.max_holdings,
+            "stop_loss_pct": req.stop_loss_pct,
+        },
+        "user_id": user_id,
+    })
+    await session.commit()
+
+    from stock_service.quant.tasks import run_backtest_task
+    try:
+        celery_result = run_backtest_task.delay(task["id"], task["params"])
+    except Exception as exc:
+        # Broker unreachable — mark task as failed so it doesn't sit in 'pending' forever
+        await quant_crud.update_task_error(session, task["id"], f"Celery dispatch failed: {exc}")
+        await session.commit()
+        raise HTTPException(503, f"Task queue unavailable: {exc}")
+
+    # 更新 celery_task_id
+    await quant_crud.update_task_status(session, task["id"], "pending",
+                                        celery_task_id=celery_result.id)
+    await session.commit()
+
+    return ApiResponse(code=0, msg="ok", data={
+        "task_id": task["id"],
+        "celery_task_id": celery_result.id,
+        "status": "pending",
+    })
+
+
 @router.post("/run", response_model=ApiResponse)
 async def run_backtest(
     req: BacktestRequest,
