@@ -345,12 +345,12 @@ class SimTradingEngine:
             })
             peak_assets = total_assets
 
-        drawdown_ok, drawdown_reason = rules.check_account_drawdown(
+        drawdown_triggered, drawdown_reason = rules.check_account_drawdown(
             total_assets, peak_assets, config
         )
 
         # 回撤超限 → 暂停账户，禁止后续交易
-        if not drawdown_ok:
+        if drawdown_triggered:
             await quant_crud.update_sim_account(self._session, account_id, {
                 "status": "drawdown_halt",
             })
@@ -359,8 +359,8 @@ class SimTradingEngine:
         return {
             "stop_loss": triggered_stop_loss,
             "take_profit": triggered_take_profit,
-            "drawdown_warning": not drawdown_ok,
-            "drawdown_reason": drawdown_reason if not drawdown_ok else None,
+            "drawdown_warning": drawdown_triggered,
+            "drawdown_reason": drawdown_reason if drawdown_triggered else None,
         }
 
     async def _update_total_assets(self, account_id: int) -> None:
@@ -368,7 +368,11 @@ class SimTradingEngine:
         positions = await quant_crud.get_positions(self._session, account_id)
         position_value = 0.0
         for p in positions:
-            price = await asyncio.to_thread(fetch_realtime_price, p["code"])
+            try:
+                price = await asyncio.to_thread(fetch_realtime_price, p["code"])
+            except Exception as e:
+                logger.warning(f"[update-assets] 获取 {p['code']} 实时价格失败，使用均价: {e}")
+                price = None
             if price and price > 0:
                 position_value += price * p["quantity"]
             else:

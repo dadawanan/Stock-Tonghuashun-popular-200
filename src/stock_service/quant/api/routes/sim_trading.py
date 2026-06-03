@@ -1,4 +1,5 @@
 from datetime import date as date_type
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,6 +89,32 @@ async def update_account(
     if not account:
         raise HTTPException(404, "Account not found")
     return ApiResponse(code=0, msg="ok", data=account)
+
+
+@router.post("/accounts/{account_id}/resume", response_model=ApiResponse)
+async def resume_account(
+    account_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_user),
+):
+    """恢复被暂停的账户（将 drawdown_halt 改回 active）"""
+    engine = SimTradingEngine(session)
+    if not await engine.verify_ownership(current_user.id, account_id):
+        raise HTTPException(403, "Not your account")
+
+    account = await quant_crud.get_sim_account(session, account_id)
+    if not account:
+        raise HTTPException(404, "Account not found")
+    if account["status"] == "active":
+        return ApiResponse(code=0, msg="账户已是活跃状态")
+
+    # 将 peak_assets 重置为当前 total_assets，避免恢复后立即再次触发回撤
+    total_assets = float(account.get("total_assets", 0))
+    await quant_crud.update_sim_account(session, account_id, {
+        "status": "active",
+        "peak_assets": Decimal(str(round(total_assets, 2))),
+    })
+    return ApiResponse(code=0, msg="账户已恢复")
 
 
 @router.get("/accounts/{account_id}/positions", response_model=ApiResponse)

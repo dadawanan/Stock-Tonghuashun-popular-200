@@ -206,6 +206,16 @@ export default function SimTradingPage() {
     }
   };
 
+  const handleResumeAccount = async (id: number) => {
+    try {
+      await quantApi.resumeSimAccount(id);
+      message.success("账户已恢复");
+      loadAccounts();
+    } catch (e: any) {
+      message.error(e?.message || "恢复失败");
+    }
+  };
+
   const handleBatchDeleteAccounts = () => {
     if (selectedAccountKeys.length === 0) {
       message.warning("请先选择要删除的账户");
@@ -505,6 +515,16 @@ export default function SimTradingPage() {
               columns={[
                 { title: "名称", dataIndex: "account_name", width: 120 },
                 {
+                  title: "状态",
+                  dataIndex: "status",
+                  width: 80,
+                  render: (status: string) => (
+                    <Tag color={status === "active" ? "green" : "red"}>
+                      {status === "active" ? "正常" : "暂停"}
+                    </Tag>
+                  ),
+                },
+                {
                   title: "策略",
                   dataIndex: "strategy_id",
                   width: 200,
@@ -537,24 +557,38 @@ export default function SimTradingPage() {
                 },
                 {
                   title: "操作",
-                  width: 60,
+                  width: 100,
                   render: (_, record) => (
-                    <Popconfirm
-                      title="确定删除此账户？"
-                      onConfirm={(e) => {
-                        e?.stopPropagation();
-                        handleDeleteAccount(record.id);
-                      }}
-                      onCancel={(e) => e?.stopPropagation()}
-                    >
-                      <Button
-                        size="small"
-                        danger
-                        onClick={(e) => e.stopPropagation()}
+                    <Space size={4}>
+                      {record.status !== "active" && (
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResumeAccount(record.id);
+                          }}
+                        >
+                          恢复
+                        </Button>
+                      )}
+                      <Popconfirm
+                        title="确定删除此账户？"
+                        onConfirm={(e) => {
+                          e?.stopPropagation();
+                          handleDeleteAccount(record.id);
+                        }}
+                        onCancel={(e) => e?.stopPropagation()}
                       >
-                        删除
-                      </Button>
-                    </Popconfirm>
+                        <Button
+                          size="small"
+                          danger
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          删除
+                        </Button>
+                      </Popconfirm>
+                    </Space>
                   ),
                 },
               ]}

@@ -323,6 +323,8 @@ export const quantApi = {
 
   deleteSimAccount: (id: number) => http.delete(`/api/quant/sim/accounts/${id}`),
 
+  resumeSimAccount: (id: number) => http.post<any>(`/api/quant/sim/accounts/${id}/resume`),
+
   getPositions: (accountId: number) =>
     http.get<Position[]>(`/api/quant/sim/accounts/${accountId}/positions`),
 
