@@ -107,6 +107,8 @@ async def resume_account(
         raise HTTPException(404, "Account not found")
     if account["status"] == "active":
         return ApiResponse(code=0, msg="账户已是活跃状态")
+    if account["status"] != "drawdown_halt":
+        raise HTTPException(400, f"当前状态 '{account['status']}' 不支持恢复，仅支持从 drawdown_halt 恢复")
 
     # 将 peak_assets 重置为当前 total_assets，避免恢复后立即再次触发回撤
     total_assets = float(account.get("total_assets", 0))
@@ -279,5 +281,5 @@ async def daily_settlement(
         raise HTTPException(403, "Not your account")
 
     dt = date_type.fromisoformat(trade_date)
-    triggered = await engine.daily_settlement(account_id, dt)
-    return ApiResponse(code=0, msg="ok", data={"stop_loss_triggered": triggered})
+    result = await engine.daily_settlement(account_id, dt)
+    return ApiResponse(code=0, msg="ok", data=result)

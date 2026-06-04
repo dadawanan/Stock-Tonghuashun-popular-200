@@ -81,10 +81,6 @@ async def run_backtest(
     session: AsyncSession = Depends(get_session),
     current_user: dict = Depends(get_current_user),
 ):
-    strategy = await quant_crud.get_strategy(session, req.strategy_id)
-    if not strategy:
-        raise HTTPException(404, "Strategy not found")
-
     codes = req.stock_codes
     if not codes:
         from stock_service.quant.infrastructure.analysis_adapter import AnalysisAdapter
@@ -93,6 +89,33 @@ async def run_backtest(
 
     if not codes:
         raise HTTPException(400, "No stock codes provided or found")
+
+    # ── VectorBT 引擎 ──
+    if req.engine == "vectorbt":
+        if not req.strategy_type:
+            raise HTTPException(400, "VectorBT 引擎需要 strategy_type 参数")
+
+        from stock_service.quant.application.vectorbt_engine import VectorBTEngine
+        vbt_engine = VectorBTEngine(session)
+        result = await vbt_engine.run(
+            stock_codes=codes,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            strategy_type=req.strategy_type,
+            strategy_params=req.strategy_params or {},
+            initial_capital=req.initial_capital,
+            commission_rate=req.commission_rate,
+            slippage=req.slippage,
+        )
+        return ApiResponse(code=0, msg="ok", data=result)
+
+    # ── Legacy 引擎 ──
+    if not req.strategy_id:
+        raise HTTPException(400, "Legacy 引擎需要 strategy_id 参数")
+
+    strategy = await quant_crud.get_strategy(session, req.strategy_id)
+    if not strategy:
+        raise HTTPException(404, "Strategy not found")
 
     engine = BacktestEngine(session)
     config = BacktestConfig(
@@ -114,6 +137,15 @@ async def run_backtest(
         strategy_engine=_strategy_engine,
     )
     return ApiResponse(code=0, msg="ok", data=result)
+
+
+@router.get("/vbt-strategies", response_model=ApiResponse)
+async def list_vbt_strategies(
+    current_user: dict = Depends(get_current_user),
+):
+    """列出所有可用的 VectorBT 策略"""
+    from stock_service.quant.application.vectorbt_engine import VECTORBT_STRATEGIES
+    return ApiResponse(code=0, msg="ok", data=VECTORBT_STRATEGIES)
 
 
 @router.get("/results", response_model=ApiResponse)
