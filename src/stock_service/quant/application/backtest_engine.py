@@ -408,7 +408,7 @@ class BacktestEngine:
         if nav_series:
             month_start_assets: dict[str, float] = {}
             for nav in nav_series:
-                month_key = nav["trade_date"][:7]  # "2026-05"
+                month_key = nav["trade_date"].strftime("%Y-%m") if hasattr(nav["trade_date"], "strftime") else str(nav["trade_date"])[:7]  # "2026-05"
                 if month_key not in month_start_assets:
                     month_start_assets[month_key] = nav["total_assets"]
             month_keys = sorted(month_start_assets.keys())
@@ -417,7 +417,8 @@ class BacktestEngine:
                 # 找这个月最后一天的 assets
                 end_a = start_a
                 for nav in nav_series:
-                    if nav["trade_date"][:7] == mk:
+                    nav_month = nav["trade_date"].strftime("%Y-%m") if hasattr(nav["trade_date"], "strftime") else str(nav["trade_date"])[:7]
+                    if nav_month == mk:
                         end_a = nav["total_assets"]
                 monthly_returns[mk] = round((end_a - start_a) / start_a, 4) if start_a > 0 else 0
 
