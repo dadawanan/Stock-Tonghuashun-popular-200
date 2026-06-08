@@ -65,7 +65,13 @@ class BacktestResponse(BaseModel):
     total_return: float | None
     annual_return: float | None
     max_drawdown: float | None
-    sharpe_ratio: float | None
+    max_drawdown_days: int | None
+    sharpe: float | None
+    sortino: float | None
+    calmar: float | None
+    alpha: float | None
+    beta: float | None
+    information_ratio: float | None
     win_rate: float | None
     total_trades: int | None
     created_at: datetime

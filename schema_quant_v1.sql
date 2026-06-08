@@ -105,10 +105,18 @@ CREATE TABLE IF NOT EXISTS backtest_result (
     start_date      DATE,
     end_date        DATE,
 
+    total_return    NUMERIC(18, 6),
     annual_return   NUMERIC(18, 4),
     max_drawdown    NUMERIC(18, 4),
+    max_drawdown_days INTEGER,
     sharpe          NUMERIC(18, 4),
+    sortino         NUMERIC(18, 4),
+    calmar          NUMERIC(18, 4),
+    alpha           NUMERIC(18, 4),
+    beta            NUMERIC(18, 4),
+    information_ratio NUMERIC(18, 4),
     win_rate        NUMERIC(18, 4),
+    total_trades    INTEGER,
 
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

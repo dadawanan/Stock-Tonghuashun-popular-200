@@ -103,10 +103,18 @@ class BacktestResult(Base):
     strategy_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
     start_date: Mapped[Optional[date]] = mapped_column(Date)
     end_date: Mapped[Optional[date]] = mapped_column(Date)
+    total_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
     annual_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     max_drawdown: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    max_drawdown_days: Mapped[Optional[int]] = mapped_column(Integer)
     sharpe: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    sortino: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    calmar: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    alpha: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    beta: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    information_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     win_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    total_trades: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (

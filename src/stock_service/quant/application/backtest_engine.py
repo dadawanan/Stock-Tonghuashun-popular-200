@@ -226,10 +226,18 @@ class BacktestEngine:
             "strategy_id": strategy_id,
             "start_date": start_date,
             "end_date": end_date,
+            "total_return": metrics.get("total_return"),
             "annual_return": metrics.get("annual_return"),
             "max_drawdown": metrics.get("max_drawdown"),
+            "max_drawdown_days": metrics.get("max_drawdown_days"),
             "sharpe": metrics.get("sharpe_ratio"),
+            "sortino": metrics.get("sortino_ratio"),
+            "calmar": metrics.get("calmar_ratio"),
+            "alpha": metrics.get("alpha"),
+            "beta": metrics.get("beta"),
+            "information_ratio": metrics.get("information_ratio"),
             "win_rate": metrics.get("win_rate"),
+            "total_trades": metrics.get("total_trades"),
         })
 
         for trade in trades:
