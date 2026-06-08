@@ -494,7 +494,8 @@ export default function StrategiesPage() {
     setPreviewResult(null);
     try {
       const result = await quantApi.previewSignals({
-        strategy_ids: selectedStrategyIds.length > 0 ? selectedStrategyIds : undefined,
+        strategy_ids:
+          selectedStrategyIds.length > 0 ? selectedStrategyIds : undefined,
         max_stocks: maxStocks,
       });
       setPreviewResult(result);
@@ -585,7 +586,9 @@ export default function StrategiesPage() {
   return (
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
-        <Title level={3} className={styles.pageTitle}>策略管理</Title>
+        <Title level={3} className={styles.pageTitle}>
+          策略管理
+        </Title>
         <Space>
           <Button loading={backfillLoading} onClick={handleBackfill}>
             补全数据
@@ -593,9 +596,7 @@ export default function StrategiesPage() {
           <Button loading={indicatorLoading} onClick={handleComputeIndicators}>
             计算指标
           </Button>
-          <Button onClick={() => setPreviewOpen(true)}>
-            信号预览
-          </Button>
+          <Button onClick={() => setPreviewOpen(true)}>信号预览</Button>
           <Button type="primary" onClick={handleCreate}>
             新建策略
           </Button>
@@ -605,7 +606,7 @@ export default function StrategiesPage() {
       {/* 使用说明 */}
       <Card title="使用说明" className={styles.sectionGap}>
         <Paragraph>
-          策略是量化交易的核心，决定了何时买入、何时卖出。系统提供 4
+          策略是量化交易的核心，决定了何时买入、何时卖出。系统提供 10
           种内置策略，每种策略有不同的参数可调。
           你可以修改参数来调整策略的激进程度，也可以创建多个同类型策略来对比不同参数的效果。
         </Paragraph>
@@ -763,7 +764,10 @@ export default function StrategiesPage() {
       <Modal
         title="信号预览"
         open={previewOpen}
-        onCancel={() => { setPreviewOpen(false); setPreviewResult(null); }}
+        onCancel={() => {
+          setPreviewOpen(false);
+          setPreviewResult(null);
+        }}
         footer={null}
         width={800}
       >
@@ -780,7 +784,12 @@ export default function StrategiesPage() {
                     {strategies.map((s) => (
                       <Col key={s.id}>
                         <Checkbox value={s.id}>
-                          <Tag color={strategyTypeLabels[s.type]?.color || "default"} style={{ marginLeft: 4 }}>
+                          <Tag
+                            color={
+                              strategyTypeLabels[s.type]?.color || "default"
+                            }
+                            style={{ marginLeft: 4 }}
+                          >
                             {strategyTypeLabels[s.type]?.label || s.type}
                           </Tag>
                           {s.name}
@@ -800,7 +809,11 @@ export default function StrategiesPage() {
                 style={{ width: 100 }}
               />
             </Space>
-            <Button type="primary" onClick={handlePreview} loading={previewLoading}>
+            <Button
+              type="primary"
+              onClick={handlePreview}
+              loading={previewLoading}
+            >
               运行预览
             </Button>
           </Space>
@@ -814,51 +827,77 @@ export default function StrategiesPage() {
 
         {previewResult && (
           <div>
-            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="交易日期">{previewResult.trade_date}</Descriptions.Item>
-              <Descriptions.Item label="股票数量">{previewResult.stock_count}</Descriptions.Item>
-              <Descriptions.Item label="策略数量">{previewResult.strategy_count}</Descriptions.Item>
-              <Descriptions.Item label="总信号数">{previewResult.total_signals}</Descriptions.Item>
+            <Descriptions
+              bordered
+              size="small"
+              column={2}
+              style={{ marginBottom: 16 }}
+            >
+              <Descriptions.Item label="交易日期">
+                {previewResult.trade_date}
+              </Descriptions.Item>
+              <Descriptions.Item label="股票数量">
+                {previewResult.stock_count}
+              </Descriptions.Item>
+              <Descriptions.Item label="策略数量">
+                {previewResult.strategy_count}
+              </Descriptions.Item>
+              <Descriptions.Item label="总信号数">
+                {previewResult.total_signals}
+              </Descriptions.Item>
             </Descriptions>
 
             {/* Per-strategy signals */}
-            {Object.entries(previewResult.strategy_signals || {}).map(([name, signals]: [string, any]) => (
-              <Card key={name} size="small" title={name} style={{ marginBottom: 12 }}>
-                {signals.length === 0 ? (
-                  <Text type="secondary">无信号</Text>
-                ) : (
-                  <Table
-                    dataSource={signals}
-                    rowKey={(r: any) => `${r.code}-${r.type}`}
-                    size="small"
-                    pagination={false}
-                    columns={[
-                      { title: "代码", dataIndex: "code", width: 100 },
-                      {
-                        title: "方向",
-                        dataIndex: "type",
-                        width: 80,
-                        render: (v: string) => (
-                          <Tag color={v === "buy" ? "green" : "red"}>{v === "buy" ? "买入" : "卖出"}</Tag>
-                        ),
-                      },
-                      {
-                        title: "得分",
-                        dataIndex: "score",
-                        width: 80,
-                        render: (v: number) => v?.toFixed(4),
-                      },
-                      { title: "原因", dataIndex: "reason", ellipsis: true },
-                    ]}
-                  />
-                )}
-              </Card>
-            ))}
+            {Object.entries(previewResult.strategy_signals || {}).map(
+              ([name, signals]: [string, any]) => (
+                <Card
+                  key={name}
+                  size="small"
+                  title={name}
+                  style={{ marginBottom: 12 }}
+                >
+                  {signals.length === 0 ? (
+                    <Text type="secondary">无信号</Text>
+                  ) : (
+                    <Table
+                      dataSource={signals}
+                      rowKey={(r: any) => `${r.code}-${r.type}`}
+                      size="small"
+                      pagination={false}
+                      columns={[
+                        { title: "代码", dataIndex: "code", width: 100 },
+                        {
+                          title: "方向",
+                          dataIndex: "type",
+                          width: 80,
+                          render: (v: string) => (
+                            <Tag color={v === "buy" ? "green" : "red"}>
+                              {v === "buy" ? "买入" : "卖出"}
+                            </Tag>
+                          ),
+                        },
+                        {
+                          title: "得分",
+                          dataIndex: "score",
+                          width: 80,
+                          render: (v: number) => v?.toFixed(4),
+                        },
+                        { title: "原因", dataIndex: "reason", ellipsis: true },
+                      ]}
+                    />
+                  )}
+                </Card>
+              ),
+            )}
 
             {/* Consensus signals */}
             <Divider>共识信号（全部策略一致）</Divider>
             {(previewResult.consensus_signals || []).length === 0 ? (
-              <Alert type="info" message="当前没有所有策略一致的信号" showIcon />
+              <Alert
+                type="info"
+                message="当前没有所有策略一致的信号"
+                showIcon
+              />
             ) : (
               <Table
                 dataSource={previewResult.consensus_signals}
@@ -872,7 +911,9 @@ export default function StrategiesPage() {
                     dataIndex: "direction",
                     width: 80,
                     render: (v: string) => (
-                      <Tag color={v === "buy" ? "green" : "red"}>{v === "buy" ? "买入" : "卖出"}</Tag>
+                      <Tag color={v === "buy" ? "green" : "red"}>
+                        {v === "buy" ? "买入" : "卖出"}
+                      </Tag>
                     ),
                   },
                   {
