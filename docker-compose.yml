@@ -65,6 +65,21 @@ services:
     ports:
       - "8001:8001"
 
+  agent-stock:
+    build:
+      context: ../agent-stock
+      dockerfile: Dockerfile
+    container_name: agent-stock
+    restart: always
+    depends_on:
+      stock-api:
+        condition: service_started
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      STOCK_API_URL: http://stock-api:8000
+    ports:
+      - "8001:8001"
+
 volumes:
   stock_pgdata:
     name: stock_pgdata

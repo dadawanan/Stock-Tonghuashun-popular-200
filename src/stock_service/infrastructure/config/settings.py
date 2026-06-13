@@ -199,6 +199,10 @@ class Settings:
     def redis_url(self) -> str:
         return self._get("redis_url", lambda: _get_required_env("REDIS_URL", "redis://localhost:6379/0"))  # type: ignore[return-value]
 
+    @property
+    def agent_stock_url(self) -> str:
+        return self._get("agent_stock_url", lambda: os.getenv("AGENT_STOCK_URL", "http://localhost:8001"))  # type: ignore[return-value]
+
 
 settings = Settings()
 
