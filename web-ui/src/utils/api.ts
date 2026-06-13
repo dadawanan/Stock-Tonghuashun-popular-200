@@ -457,7 +457,19 @@ export interface ChatMessage {
   isWelcome?: boolean;
 }
 
+export interface ChatChunk {
+  type: 'token' | 'done' | 'error';
+  content: string;
+}
+
 export const chatApi = {
-  sendMessage: (message: string) =>
-    http.post<ChatMessage>('/api/chat/send', { message }, { showError: false }),
+  sendMessage: (message: string, history: { role: string; content: string }[] = []) =>
+    fetch('/api/chat/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      },
+      body: JSON.stringify({ message, history }),
+    }),
 };

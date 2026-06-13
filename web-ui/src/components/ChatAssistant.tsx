@@ -14,7 +14,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { chatApi } from '../utils';
-import type { ChatMessage, IntentAction } from '../utils';
+import type { ChatMessage, IntentAction, ChatChunk } from '../utils';
 import styles from './ChatAssistant.less';
 
 /** 快捷操作配置 */
@@ -69,12 +69,9 @@ export default function ChatAssistant() {
     };
   }, []);
 
-  /** 发送消息 */
   const handleSend = useCallback(
     async (text?: string) => {
-      // #7: 用 ?? 替代 ||，只在 null/undefined 时 fallback
       const content = (text ?? input).trim();
-      // #1: 用 sendingRef 做同步锁，不依赖 React 批量更新的 loading 状态
       if (!content || sendingRef.current) return;
 
       sendingRef.current = true;
@@ -89,28 +86,87 @@ export default function ChatAssistant() {
       setMessages((prev) => [...prev, userMsg]);
       setInput('');
 
-      // #10: 创建新的 AbortController
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
       try {
-        const reply = await chatApi.sendMessage(content);
-        // #4: 面板已关闭则丢弃响应
+        // Build history from current messages
+        const history = [...messages, userMsg].map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+        const response = await chatApi.sendMessage(content, history);
+
         if (closedRef.current) return;
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response body');
+
+        const decoder = new TextDecoder();
+        const assistantId = uuidv4();
+        let accumulated = '';
+        let startedStreaming = false;
+
+        // Add placeholder message for streaming
         setMessages((prev) => [
           ...prev,
           {
-            // #5: 使用服务端返回的 ID 和时间戳
-            id: reply.id || uuidv4(),
+            id: assistantId,
             role: 'assistant',
-            content: reply.content,
-            timestamp: reply.timestamp || Date.now(),
-            actions: reply.actions,
+            content: '',
+            timestamp: Date.now(),
           },
         ]);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split('\n');
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const dataStr = line.slice(6).trim();
+            if (!dataStr) continue;
+
+            try {
+              const chunk: ChatChunk = JSON.parse(dataStr);
+
+              if (chunk.type === 'token') {
+                if (!startedStreaming) {
+                  startedStreaming = true;
+                  setLoading(false);
+                }
+                accumulated += chunk.content;
+                const finalContent = accumulated;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: finalContent } : m,
+                  ),
+                );
+              } else if (chunk.type === 'done') {
+                break;
+              } else if (chunk.type === 'error') {
+                accumulated = chunk.content || '抱歉，AI 服务出错了。';
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: accumulated } : m,
+                  ),
+                );
+              }
+            } catch {
+              // Skip non-JSON lines
+            }
+          }
+        }
       } catch (err: any) {
-        // #10: 被取消的请求不写入消息
         if (err?.name === 'AbortError') return;
         if (closedRef.current) return;
         setMessages((prev) => [
@@ -118,7 +174,7 @@ export default function ChatAssistant() {
           {
             id: uuidv4(),
             role: 'assistant',
-            content: '抱歉，助手暂时无法响应。AI 服务接入后即可正常使用。',
+            content: '抱歉，助手暂时无法响应。请检查 AI 服务是否已启动。',
             timestamp: Date.now(),
           },
         ]);
@@ -127,14 +183,31 @@ export default function ChatAssistant() {
         setLoading(false);
       }
     },
-    [input],
+    [input, messages],
   );
 
-  /** 处理意图动作 */
-  // TODO: 接入 AI 服务后，根据 action.type 分发到 navigate / query / analyze
-  const handleAction = useCallback((_action: IntentAction) => {
-    // placeholder — 实际逻辑待 AI 服务集成后实现
-  }, []);
+  const handleAction = useCallback((action: IntentAction) => {
+    switch (action.type) {
+      case 'navigate':
+        if (action.payload?.path) {
+          window.location.href = action.payload.path;
+        }
+        break;
+      case 'query':
+        // Trigger a new query with the action payload
+        if (action.payload?.query) {
+          handleSend(action.payload.query);
+        }
+        break;
+      case 'analyze':
+        if (action.payload?.stock_code) {
+          window.location.href = `/?stock=${action.payload.stock_code}`;
+        }
+        break;
+      default:
+        break;
+    }
+  }, [handleSend]);
 
   /** 键盘事件 */
   const handleKeyDown = useCallback(
