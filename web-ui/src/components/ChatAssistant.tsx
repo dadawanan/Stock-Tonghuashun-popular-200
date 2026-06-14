@@ -115,17 +115,6 @@ export default function ChatAssistant() {
         let startedStreaming = false;
         let lineRemainder = '';
 
-        // Add placeholder message for streaming
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: assistantId,
-            role: 'assistant',
-            content: '',
-            timestamp: Date.now(),
-          },
-        ]);
-
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -148,23 +137,49 @@ export default function ChatAssistant() {
                 if (!startedStreaming) {
                   startedStreaming = true;
                   setLoading(false);
+                  // 首个 token 到达时，添加 assistant 消息
+                  accumulated = chunk.content;
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: assistantId,
+                      role: 'assistant',
+                      content: accumulated,
+                      timestamp: Date.now(),
+                    },
+                  ]);
+                } else {
+                  accumulated += chunk.content;
+                  const finalContent = accumulated;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId ? { ...m, content: finalContent } : m,
+                    ),
+                  );
                 }
-                accumulated += chunk.content;
-                const finalContent = accumulated;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: finalContent } : m,
-                  ),
-                );
               } else if (chunk.type === 'done') {
                 break;
               } else if (chunk.type === 'error') {
                 accumulated = chunk.content || '抱歉，AI 服务出错了。';
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: accumulated } : m,
-                  ),
-                );
+                if (!startedStreaming) {
+                  startedStreaming = true;
+                  setLoading(false);
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: assistantId,
+                      role: 'assistant',
+                      content: accumulated,
+                      timestamp: Date.now(),
+                    },
+                  ]);
+                } else {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId ? { ...m, content: accumulated } : m,
+                    ),
+                  );
+                }
               }
             } catch {
               // Skip non-JSON lines
@@ -331,8 +346,8 @@ export default function ChatAssistant() {
                   </div>
                 ))}
 
-                {/* 加载动画（流式输出开始后隐藏） */}
-                {loading && !messages.some((m) => m.role === 'assistant' && m.content === '') && (
+                {/* 加载动画 */}
+                {loading && (
                   <div className={`${styles.messageItem} ${styles.assistant}`}>
                     <div className={styles.avatar}>
                       <RobotOutlined />
