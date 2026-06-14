@@ -45,6 +45,6 @@ async def stream_chat(message: str, history: list[dict[str, str]] | None = None)
     except httpx.ConnectError:
         logger.error("Cannot connect to agent-stock at %s", settings.agent_stock_url)
         yield {"event": "message", "data": json.dumps({"type": "error", "content": "AI 服务未启动"}, ensure_ascii=False)}
-    except Exception as e:
+    except Exception:
         logger.exception("stream_chat error")
-        yield {"event": "message", "data": json.dumps({"type": "error", "content": str(e)}, ensure_ascii=False)}
+        yield {"event": "message", "data": json.dumps({"type": "error", "content": "AI 服务处理出错，请稍后重试"}, ensure_ascii=False)}

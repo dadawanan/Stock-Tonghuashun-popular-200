@@ -91,13 +91,14 @@ export default function ChatAssistant() {
       abortRef.current = controller;
 
       try {
-        // Build history from current messages
-        const history = [...messages, userMsg].map((m) => ({
+        // Build history from current messages (sliding window: last 20 messages)
+        const allMessages = [...messages, userMsg];
+        const history = allMessages.slice(-20).map((m) => ({
           role: m.role,
           content: m.content,
         }));
 
-        const response = await chatApi.sendMessage(content, history);
+        const response = await chatApi.sendMessage(content, history, controller.signal);
 
         if (closedRef.current) return;
 
@@ -112,6 +113,7 @@ export default function ChatAssistant() {
         const assistantId = uuidv4();
         let accumulated = '';
         let startedStreaming = false;
+        let lineRemainder = '';
 
         // Add placeholder message for streaming
         setMessages((prev) => [
@@ -129,7 +131,10 @@ export default function ChatAssistant() {
           if (done) break;
 
           const text = decoder.decode(value, { stream: true });
-          const lines = text.split('\n');
+          lineRemainder += text;
+          const lines = lineRemainder.split('\n');
+          // Keep the last element as potential incomplete line
+          lineRemainder = lines.pop() || '';
 
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;

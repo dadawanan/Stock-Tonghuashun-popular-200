@@ -463,13 +463,27 @@ export interface ChatChunk {
 }
 
 export const chatApi = {
-  sendMessage: (message: string, history: { role: string; content: string }[] = []) =>
-    fetch('/api/chat/send', {
+  sendMessage: (
+    message: string,
+    history: { role: string; content: string }[] = [],
+    signal?: AbortSignal,
+  ) => {
+    // Inject auth token to match other API calls
+    const { getAccessToken } = require('./auth-storage');
+    const token = getAccessToken?.();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch('/api/chat/send', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-      },
+      headers,
       body: JSON.stringify({ message, history }),
-    }),
+      credentials: 'include',
+      signal,
+    });
+  },
 };
