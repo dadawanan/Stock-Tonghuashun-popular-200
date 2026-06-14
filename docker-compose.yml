@@ -76,6 +76,7 @@ services:
         condition: service_started
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       STOCK_API_URL: http://stock-api:8000
     ports:
       - "8002:8001"
