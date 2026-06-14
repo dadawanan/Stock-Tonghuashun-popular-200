@@ -20,7 +20,7 @@ async def stream_chat(message: str, history: list[dict[str, str]] | None = None)
         payload["history"] = history
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
             async with client.stream(
                 "POST",
                 f"{settings.agent_stock_url}/api/chat/stream",
