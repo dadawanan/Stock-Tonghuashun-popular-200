@@ -1,4 +1,5 @@
 import http from './request';
+import { getAccessToken } from './auth-storage';
 import type { AuthTokensPublic } from './auth-storage';
 
 export interface AuthUser {
@@ -469,8 +470,7 @@ export const chatApi = {
     signal?: AbortSignal,
   ) => {
     // Inject auth token to match other API calls
-    const { getAccessToken } = require('./auth-storage');
-    const token = getAccessToken?.();
+    const token = getAccessToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
