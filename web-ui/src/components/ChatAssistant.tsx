@@ -331,8 +331,8 @@ export default function ChatAssistant() {
                   </div>
                 ))}
 
-                {/* 加载动画 */}
-                {loading && (
+                {/* 加载动画（流式输出开始后隐藏） */}
+                {loading && !messages.some((m) => m.role === 'assistant' && m.content === '') && (
                   <div className={`${styles.messageItem} ${styles.assistant}`}>
                     <div className={styles.avatar}>
                       <RobotOutlined />
