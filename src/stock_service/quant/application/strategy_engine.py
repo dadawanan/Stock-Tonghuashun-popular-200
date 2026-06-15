@@ -169,6 +169,11 @@ class SentimentStrategy(BaseStrategy):
             "market_weight": 0.45,
             "buy_threshold": 2.0,
             "sell_threshold": -1.5,
+            # 卖出条件
+            "sell_profit_pct": 0.10,        # 盈利多少比例卖出
+            "sell_loss_pct": -0.05,         # 亏损多少比例卖出
+            "sell_score_drop": 0.5,         # 情绪分下降多少卖出
+            "max_holdings": 10,             # 最大持仓数
         }
 
     @property
@@ -191,7 +196,60 @@ class SentimentStrategy(BaseStrategy):
         signals = []
         for code in stock_codes:
             analysis = context.analysis.get(code)
+            pos = context.positions.get(code)
+
+            # ── 持仓股的卖出逻辑 ──
+            if pos:
+                avg_price = pos.get("avg_price", 0)
+                current_price = pos.get("current_price", 0) or context.market_data.get(code, {}).get("close", 0)
+
+                if avg_price > 0 and current_price > 0:
+                    pnl_pct = (current_price - avg_price) / avg_price
+
+                    # 1. 止盈：盈利达到阈值
+                    if pnl_pct >= self._params["sell_profit_pct"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, 0.5 + pnl_pct),
+                            reason=f"止盈卖出: 盈利{pnl_pct:.1%}",
+                        ))
+                        continue
+
+                    # 2. 止损：亏损达到阈值
+                    if pnl_pct <= self._params["sell_loss_pct"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, 0.5 + abs(pnl_pct)),
+                            reason=f"止损卖出: 亏损{pnl_pct:.1%}",
+                        ))
+                        continue
+
+                # 3. 情绪恶化卖出
+                if analysis:
+                    text_score = analysis.get("text_score", 0) or 0
+                    market_score = analysis.get("market_score", 0) or 0
+                    integrated = (
+                        text_score * self._params["text_weight"]
+                        + market_score * self._params["market_weight"]
+                    )
+                    if integrated <= self._params["sell_threshold"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, abs(integrated) / 5.0),
+                            reason=f"情绪恶化: 综合分{integrated:.2f} <= {self._params['sell_threshold']}",
+                        ))
+                        continue
+
+            # ── 买入逻辑（仅对非持仓股）──
             if not analysis:
+                continue
+
+            # 已持仓的不重复买入
+            if code in context.positions:
+                continue
+
+            # 持仓数量限制
+            if len(context.positions) >= self._params["max_holdings"]:
                 continue
 
             text_score = analysis.get("text_score", 0) or 0
@@ -206,12 +264,6 @@ class SentimentStrategy(BaseStrategy):
                     code=code, signal_type=SignalType.BUY,
                     score=min(1.0, integrated / 5.0),
                     reason=f"综合情绪分 {integrated:.2f} >= {self._params['buy_threshold']}",
-                ))
-            elif integrated <= self._params["sell_threshold"]:
-                signals.append(Signal(
-                    code=code, signal_type=SignalType.SELL,
-                    score=min(1.0, abs(integrated) / 5.0),
-                    reason=f"综合情绪分 {integrated:.2f} <= {self._params['sell_threshold']}",
                 ))
 
         return signals
