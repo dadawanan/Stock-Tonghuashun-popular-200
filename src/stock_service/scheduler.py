@@ -191,6 +191,41 @@ async def update_popularity_daily_data() -> None:
         logger.error(f"[daily-data] 失败: {e}", exc_info=True)
 
 
+async def wait_for_fund_flow_data(session, stock_codes: list[str], max_wait_seconds: int = 600) -> bool:
+    """等待资金流向数据更新（由本地 Mac 抓取并上传）"""
+    from stock_service.db.models.v2_models import MarketSnapshot
+    from sqlalchemy import select
+    import asyncio
+
+    today = datetime.now().date()
+    check_interval = 30  # 每 30 秒检查一次
+    elapsed = 0
+
+    while elapsed < max_wait_seconds:
+        # 检查有多少股票有今天的资金数据
+        stmt = select(MarketSnapshot.stock_code).where(
+            MarketSnapshot.trade_date == today,
+            MarketSnapshot.fund_flow_date == today,
+            MarketSnapshot.stock_code.in_(stock_codes),
+        ).distinct()
+        result = await session.execute(stmt)
+        updated_codes = [row[0] for row in result.fetchall()]
+
+        total = len(stock_codes)
+        updated = len(updated_codes)
+        logger.info(f"[auto-trade] 资金数据进度: {updated}/{total} (已等待 {elapsed}s)")
+
+        if updated >= total * 0.8:  # 80% 的股票有数据就继续
+            logger.info(f"[auto-trade] 资金数据已就绪 ({updated}/{total})")
+            return True
+
+        await asyncio.sleep(check_interval)
+        elapsed += check_interval
+
+    logger.warning(f"[auto-trade] 等待资金数据超时 ({max_wait_seconds}s)，继续执行")
+    return False
+
+
 async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
     """对有策略的模拟账户自动执行交易（支持多策略共识）"""
     try:
@@ -222,7 +257,10 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
 
                 stock_codes = [entry["stock_code"] for entry in new_entries]
 
-                # 填充策略上下文数据（行情、指标、分析结果）
+                # 等待资金流向数据更新（本地 Mac 抓取需要时间）
+                await wait_for_fund_flow_data(session, stock_codes)
+
+                # 填充策略上下文数据（行情、指标、分析结果、资金流向）
                 market_data: dict[str, dict] = {}
                 indicators: dict[str, dict] = {}
                 trade_date = datetime.now().date()
@@ -239,6 +277,23 @@ async def auto_trade_for_accounts(session, new_entries: list[dict]) -> None:
                             k: float(v) if isinstance(v, Decimal) else v
                             for k, v in daily[0].items()
                         }
+
+                    # 从 market_snapshot 获取资金流向数据
+                    from stock_service.db.models.v2_models import MarketSnapshot
+                    from sqlalchemy import select
+
+                    stmt = select(MarketSnapshot).where(
+                        MarketSnapshot.stock_code == code,
+                        MarketSnapshot.trade_date == trade_date,
+                    )
+                    result = await session.execute(stmt)
+                    snapshot = result.scalars().first()
+
+                    if snapshot:
+                        if code not in market_data:
+                            market_data[code] = {}
+                        market_data[code]["main_net_inflow"] = float(snapshot.main_net_inflow or 0)
+                        market_data[code]["main_net_inflow_ratio"] = float(snapshot.main_net_inflow_ratio or 0)
 
                     ind = await quant_crud.get_stock_indicator(
                         session,

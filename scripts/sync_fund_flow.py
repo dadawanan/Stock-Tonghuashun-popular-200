@@ -44,44 +44,47 @@ async def scrape_fund_flow_with_playwright(stock_codes: list[dict]) -> dict:
         context = await browser.new_context(
             user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         )
-        page = await context.new_page()
 
         for item in stock_codes:
             code = item["code"]
             name = item["name"]
 
             try:
+                page = await context.new_page()
                 digits = code.split('.')[0]
                 url = f"https://data.eastmoney.com/zjlx/{digits}.html"
 
-                await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                await asyncio.sleep(1.5)
+                # 拦截 API 请求获取数据
+                api_data = {}
 
-                # 从页面提取资金数据
-                data = await page.evaluate("""() => {
-                    const result = {};
-                    const body = document.body.innerText || '';
+                async def handle_response(response):
+                    if 'push2' in response.url and 'fflow' in response.url:
+                        try:
+                            body = await response.json()
+                            klines = body.get('data', {}).get('klines', [])
+                            if klines:
+                                parts = klines[-1].split(',')
+                                if len(parts) >= 7:
+                                    api_data['main_net_inflow'] = float(parts[1])
+                                    api_data['main_net_inflow_ratio'] = float(parts[6])
+                        except:
+                            pass
 
-                    // 提取主力净流入
-                    const patterns = [
-                        ['main_net_inflow', /主力净流入[：:]*\\s*([\\d,.+-]+\\s*[万亿]?)/i],
-                        ['main_net_inflow_ratio', /主力净占比[：:]*\\s*([\\d,.+-]+%?)/i],
-                    ];
+                page.on('response', handle_response)
 
-                    for (const [key, regex] of patterns) {
-                        const match = body.match(regex);
-                        if (match) result[key] = match[1].trim();
-                    }
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(3)
 
-                    return result;
-                }""")
+                # 如果 API 拦截成功，使用 API 数据
+                if api_data:
+                    main_inflow = api_data.get('main_net_inflow', 0)
+                    ratio = api_data.get('main_net_inflow_ratio', 0)
+                else:
+                    # 备用：从页面表格提取
+                    data = await page.evaluate('() => { const t = document.querySelectorAll("table"); let r = {}; for(let i=0;i<t.length;i++){const rows=t[i].querySelectorAll("tr");for(let j=0;j<rows.length;j++){const cells=rows[j].querySelectorAll("td");if(cells.length>=3){const l=cells[1]?.textContent||"";const v=cells[2]?.textContent||"";if(l.includes("主力净流入"))r.main_net_inflow=v;if(l.includes("主力净比"))r.main_net_inflow_ratio=v;}}} return r; }')
 
-                # 解析数据
-                main_inflow_str = data.get('main_net_inflow', '0')
-                ratio_str = data.get('main_net_inflow_ratio', '0')
-
-                main_inflow = parse_amount(main_inflow_str)
-                ratio = parse_percent(ratio_str)
+                    main_inflow = parse_amount(data.get('main_net_inflow', '0'))
+                    ratio = parse_percent(data.get('main_net_inflow_ratio', '0'))
 
                 results[code] = {
                     "stock_code": code,
@@ -93,6 +96,8 @@ async def scrape_fund_flow_with_playwright(stock_codes: list[dict]) -> dict:
                 }
 
                 print(f"  ✅ {name}({code}): 主力净流入 {main_inflow/10000:.0f}万 ({ratio:.2f}%)")
+
+                await page.close()
 
             except Exception as e:
                 print(f"  ❌ {name}({code}): {e}")
@@ -214,6 +219,24 @@ async def save_to_database(fund_data: dict):
         await pool.close()
 
 
+async def get_hot_stocks_from_server() -> list[dict]:
+    """从服务器数据库获取热门股票列表"""
+    pool = await asyncpg.create_pool(**DB_CONFIG, min_size=2, max_size=5)
+
+    try:
+        query = """
+            SELECT DISTINCT ON (stock_code) stock_code, stock_name, popularity_rank
+            FROM popularity_snapshot
+            WHERE trade_date = (SELECT MAX(trade_date) FROM popularity_snapshot)
+            ORDER BY stock_code, popularity_rank ASC
+            LIMIT 50
+        """
+        rows = await pool.fetch(query)
+        return [{"code": r["stock_code"], "name": r["stock_name"]} for r in rows]
+    finally:
+        await pool.close()
+
+
 async def main():
     """主函数"""
     print("=" * 60)
@@ -223,21 +246,14 @@ async def main():
 
     DATA_DIR.mkdir(exist_ok=True)
 
-    # 热门股票列表
-    hot_stocks = [
-        {"code": "000001.SZ", "name": "平安银行"},
-        {"code": "600036.SH", "name": "招商银行"},
-        {"code": "000858.SZ", "name": "五粮液"},
-        {"code": "601318.SH", "name": "中国平安"},
-        {"code": "000333.SZ", "name": "美的集团"},
-        {"code": "000725.SZ", "name": "京东方A"},
-        {"code": "600519.SH", "name": "贵州茅台"},
-        {"code": "002415.SZ", "name": "海康威视"},
-        {"code": "600031.SH", "name": "三一重工"},
-        {"code": "000063.SZ", "name": "中兴通讯"},
-    ]
+    # 从服务器获取热门股票列表
+    print("\n📋 从服务器获取热门股票列表...")
+    hot_stocks = await get_hot_stocks_from_server()
+    print(f"   找到 {len(hot_stocks)} 只股票")
 
-    print(f"\n📋 需要抓取 {len(hot_stocks)} 只股票的资金数据")
+    if not hot_stocks:
+        print("⚠️ 没有找到热门股票，跳过")
+        return
 
     # 抓取数据
     print("\n🌐 从东方财富网页抓取资金流向...")
