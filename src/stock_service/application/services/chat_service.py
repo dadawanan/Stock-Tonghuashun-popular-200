@@ -10,7 +10,7 @@ from stock_service.infrastructure.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
-async def stream_chat(message: str, history: list[dict[str, str]] | None = None):
+async def stream_chat(message: str, history: list[dict[str, str]] | None = None, auth_header: str = ""):
     """Proxy chat request to agent-stock and yield SSE events.
 
     Yields SSE-formatted strings for direct use in EventSourceResponse.
@@ -19,13 +19,17 @@ async def stream_chat(message: str, history: list[dict[str, str]] | None = None)
     if history:
         payload["history"] = history
 
+    headers = {"Accept": "text/event-stream"}
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     try:
         async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
             async with client.stream(
                 "POST",
                 f"{settings.agent_stock_url}/api/chat/stream",
                 json=payload,
-                headers={"Accept": "text/event-stream"},
+                headers=headers,
             ) as resp:
                 if resp.status_code != 200:
                     body = await resp.aread()
