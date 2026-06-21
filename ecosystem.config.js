@@ -15,6 +15,9 @@ const inheritShellEnv = {
   PATH: process.env.PATH || "",
   HOME: process.env.HOME || "",
   APP_ENV: process.env.APP_ENV || "prod",
+  // 绕过本地代理，否则 httpx 访问 localhost:8002 会被代理拦截返回 405
+  NO_PROXY: process.env.NO_PROXY || "localhost,127.0.0.1",
+  no_proxy: process.env.no_proxy || "localhost,127.0.0.1",
 };
 
 module.exports = {
@@ -32,6 +35,8 @@ module.exports = {
         // 开发环境：http://localhost:8001
         // 生产环境：http://101.35.255.200:8001 或其他域名
         ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "http://localhost:8001,http://101.35.255.200:8001",
+        // Agent Stock AI服务地址
+        AGENT_STOCK_URL: process.env.AGENT_STOCK_URL || "http://localhost:9002",
       },
       autorestart: true,
       max_restarts: 15,

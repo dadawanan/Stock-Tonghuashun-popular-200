@@ -1,5 +1,6 @@
 import logging
 import statistics
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 
@@ -35,8 +36,14 @@ class BacktestEngine:
         end_date: date,
         config: BacktestConfig,
         strategy_engine: StrategyEngine,
+        progress_cb: Callable[[int, int, str], None] | None = None,
     ) -> dict:
-        """Run backtest and return results."""
+        """Run backtest and return results.
+
+        Args:
+            progress_cb: Optional callback ``(current, total, message)`` invoked
+                after each trading date to report progress.
+        """
         strategy = await quant_crud.get_strategy(self._session, strategy_id)
         if not strategy:
             raise ValueError(f"Strategy {strategy_id} not found")
@@ -64,6 +71,9 @@ class BacktestEngine:
             r["trade_date"]: float(r["close"]) for r in benchmark_data
         }
         benchmark_start_price = next(iter(benchmark_prices.values()), None) if benchmark_prices else None
+
+        drawdown_warn_count = 0
+        drawdown_first_date = None
 
         for trade_date in trading_dates:
             self._rules.update_available_quantity(positions)
@@ -180,11 +190,19 @@ class BacktestEngine:
             total_assets = cash + sum(p.market_value for p in positions.values())
             if total_assets > peak_assets:
                 peak_assets = total_assets
-            drawdown_ok, drawdown_reason = self._rules.check_account_drawdown(
+            drawdown_ok, _ = self._rules.check_account_drawdown(
                 total_assets, peak_assets, config
             )
             if not drawdown_ok:
-                logger.warning(f"账户回撤限制触发: {drawdown_reason}")
+                drawdown_warn_count += 1
+                if drawdown_warn_count == 1:
+                    drawdown_pct = (total_assets - peak_assets) / peak_assets if peak_assets > 0 else 0
+                    logger.warning(
+                        f"账户回撤限制触发: 日期={trade_date}, "
+                        f"总资产={total_assets:,.0f}, 峰值={peak_assets:,.0f}, "
+                        f"回撤={drawdown_pct:.1%}, 限制={config.max_drawdown_pct:.0%}"
+                    )
+                    drawdown_first_date = trade_date
 
             position_value = sum(p.market_value for p in positions.values())
             total_assets = cash + position_value
@@ -205,6 +223,18 @@ class BacktestEngine:
                 "benchmark_nav": benchmark_nav,
             })
 
+            if progress_cb:
+                progress_cb(
+                    len(nav_series), len(trading_dates),
+                    f"Processing {trade_date}",
+                )
+
+        if drawdown_warn_count > 1:
+            logger.warning(
+                f"账户回撤限制共触发 {drawdown_warn_count} 个交易日 "
+                f"(首次: {drawdown_first_date}, 末次: {trade_date})"
+            )
+
         metrics = self._calculate_metrics(
             nav_series, trades, config.initial_capital, start_date, end_date
         )
@@ -213,10 +243,18 @@ class BacktestEngine:
             "strategy_id": strategy_id,
             "start_date": start_date,
             "end_date": end_date,
+            "total_return": metrics.get("total_return"),
             "annual_return": metrics.get("annual_return"),
             "max_drawdown": metrics.get("max_drawdown"),
+            "max_drawdown_days": metrics.get("max_drawdown_days"),
             "sharpe": metrics.get("sharpe_ratio"),
+            "sortino": metrics.get("sortino_ratio"),
+            "calmar": metrics.get("calmar_ratio"),
+            "alpha": metrics.get("alpha"),
+            "beta": metrics.get("beta"),
+            "information_ratio": metrics.get("information_ratio"),
             "win_rate": metrics.get("win_rate"),
+            "total_trades": metrics.get("total_trades"),
         })
 
         for trade in trades:
@@ -387,7 +425,7 @@ class BacktestEngine:
         if nav_series:
             month_start_assets: dict[str, float] = {}
             for nav in nav_series:
-                month_key = nav["trade_date"][:7]  # "2026-05"
+                month_key = nav["trade_date"].strftime("%Y-%m") if hasattr(nav["trade_date"], "strftime") else str(nav["trade_date"])[:7]  # "2026-05"
                 if month_key not in month_start_assets:
                     month_start_assets[month_key] = nav["total_assets"]
             month_keys = sorted(month_start_assets.keys())
@@ -396,7 +434,8 @@ class BacktestEngine:
                 # 找这个月最后一天的 assets
                 end_a = start_a
                 for nav in nav_series:
-                    if nav["trade_date"][:7] == mk:
+                    nav_month = nav["trade_date"].strftime("%Y-%m") if hasattr(nav["trade_date"], "strftime") else str(nav["trade_date"])[:7]
+                    if nav_month == mk:
                         end_a = nav["total_assets"]
                 monthly_returns[mk] = round((end_a - start_a) / start_a, 4) if start_a > 0 else 0
 

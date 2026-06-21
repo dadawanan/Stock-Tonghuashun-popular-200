@@ -54,6 +54,12 @@ class PopularityStrategy(BaseStrategy):
             "top_n": 50,
             "new_entry_score_boost": 1.2,
             "rank_drop_threshold": -20,
+            # 卖出条件
+            "sell_rank_rise": 30,           # 排名上升多少位卖出（过热）
+            "sell_rank_exit": 100,          # 排名跌出多少位卖出（退出热门）
+            "sell_profit_pct": 0.10,        # 盈利多少比例卖出（止盈）
+            "sell_loss_pct": -0.05,         # 亏损多少比例卖出（止损，比固定止损更灵活）
+            "sell_hold_days": 10,           # 持有超过多少天且不赚钱就卖出
         }
 
     @property
@@ -76,11 +82,63 @@ class PopularityStrategy(BaseStrategy):
         signals = []
         for code in stock_codes:
             pop = context.popularity.get(code)
+            pos = context.positions.get(code)
+
+            # ── 持仓股的卖出逻辑 ──
+            if pos:
+                rank = pop.get("rank", 999) if pop else 999
+                avg_price = pos.get("avg_price", 0)
+                current_price = pos.get("current_price", 0) or context.market_data.get(code, {}).get("close", 0)
+
+                if avg_price > 0 and current_price > 0:
+                    pnl_pct = (current_price - avg_price) / avg_price
+
+                    # 1. 止盈：盈利达到阈值
+                    if pnl_pct >= self._params["sell_profit_pct"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, 0.5 + pnl_pct),
+                            reason=f"止盈卖出: 盈利{pnl_pct:.1%}，目标{self._params['sell_profit_pct']:.0%}",
+                        ))
+                        continue
+
+                    # 2. 止损：亏损达到阈值
+                    if pnl_pct <= self._params["sell_loss_pct"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, 0.5 + abs(pnl_pct)),
+                            reason=f"止损卖出: 亏损{pnl_pct:.1%}，阈值{self._params['sell_loss_pct']:.0%}",
+                        ))
+                        continue
+
+                    # 3. 退出热门：排名跌出阈值
+                    if rank > self._params["sell_rank_exit"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=0.6,
+                            reason=f"退出热门: 排名{rank}已跌出Top{self._params['sell_rank_exit']}",
+                        ))
+                        continue
+
+                # 不在热门榜了也要卖出
+                if not pop or pop.get("rank", 999) > self._params["top_n"]:
+                    signals.append(Signal(
+                        code=code, signal_type=SignalType.SELL,
+                        score=0.5,
+                        reason=f"不再热门: 排名{pop.get('rank', 'N/A') if pop else 'N/A'}",
+                    ))
+                    continue
+
+            # ── 买入逻辑（仅对非持仓股）──
             if not pop:
                 continue
 
             rank = pop.get("rank", 999)
             if rank > self._params["top_n"]:
+                continue
+
+            # 已持仓的不重复买入
+            if code in context.positions:
                 continue
 
             is_new = pop.get("is_new_entry", False)
@@ -98,12 +156,6 @@ class PopularityStrategy(BaseStrategy):
                     score=0.7,
                     reason=f"人气排名大幅下降{rank_change}位至第{rank}名",
                 ))
-            elif rank_change >= 30:
-                signals.append(Signal(
-                    code=code, signal_type=SignalType.SELL,
-                    score=0.6,
-                    reason=f"人气排名大幅上升{rank_change}位至第{rank}名，可能过热",
-                ))
 
         return signals
 
@@ -117,6 +169,11 @@ class SentimentStrategy(BaseStrategy):
             "market_weight": 0.45,
             "buy_threshold": 2.0,
             "sell_threshold": -1.5,
+            # 卖出条件
+            "sell_profit_pct": 0.10,        # 盈利多少比例卖出
+            "sell_loss_pct": -0.05,         # 亏损多少比例卖出
+            "sell_score_drop": 0.5,         # 情绪分下降多少卖出
+            "max_holdings": 10,             # 最大持仓数
         }
 
     @property
@@ -139,7 +196,60 @@ class SentimentStrategy(BaseStrategy):
         signals = []
         for code in stock_codes:
             analysis = context.analysis.get(code)
+            pos = context.positions.get(code)
+
+            # ── 持仓股的卖出逻辑 ──
+            if pos:
+                avg_price = pos.get("avg_price", 0)
+                current_price = pos.get("current_price", 0) or context.market_data.get(code, {}).get("close", 0)
+
+                if avg_price > 0 and current_price > 0:
+                    pnl_pct = (current_price - avg_price) / avg_price
+
+                    # 1. 止盈：盈利达到阈值
+                    if pnl_pct >= self._params["sell_profit_pct"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, 0.5 + pnl_pct),
+                            reason=f"止盈卖出: 盈利{pnl_pct:.1%}",
+                        ))
+                        continue
+
+                    # 2. 止损：亏损达到阈值
+                    if pnl_pct <= self._params["sell_loss_pct"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, 0.5 + abs(pnl_pct)),
+                            reason=f"止损卖出: 亏损{pnl_pct:.1%}",
+                        ))
+                        continue
+
+                # 3. 情绪恶化卖出
+                if analysis:
+                    text_score = analysis.get("text_score", 0) or 0
+                    market_score = analysis.get("market_score", 0) or 0
+                    integrated = (
+                        text_score * self._params["text_weight"]
+                        + market_score * self._params["market_weight"]
+                    )
+                    if integrated <= self._params["sell_threshold"]:
+                        signals.append(Signal(
+                            code=code, signal_type=SignalType.SELL,
+                            score=min(1.0, abs(integrated) / 5.0),
+                            reason=f"情绪恶化: 综合分{integrated:.2f} <= {self._params['sell_threshold']}",
+                        ))
+                        continue
+
+            # ── 买入逻辑（仅对非持仓股）──
             if not analysis:
+                continue
+
+            # 已持仓的不重复买入
+            if code in context.positions:
+                continue
+
+            # 持仓数量限制
+            if len(context.positions) >= self._params["max_holdings"]:
                 continue
 
             text_score = analysis.get("text_score", 0) or 0
@@ -154,12 +264,6 @@ class SentimentStrategy(BaseStrategy):
                     code=code, signal_type=SignalType.BUY,
                     score=min(1.0, integrated / 5.0),
                     reason=f"综合情绪分 {integrated:.2f} >= {self._params['buy_threshold']}",
-                ))
-            elif integrated <= self._params["sell_threshold"]:
-                signals.append(Signal(
-                    code=code, signal_type=SignalType.SELL,
-                    score=min(1.0, abs(integrated) / 5.0),
-                    reason=f"综合情绪分 {integrated:.2f} <= {self._params['sell_threshold']}",
                 ))
 
         return signals

@@ -333,4 +333,27 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 
+-- ---------------------------------------------------------
+-- 9. Async backtest task tracking
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS backtest_task (
+    id              BIGSERIAL PRIMARY KEY,
+    celery_task_id  VARCHAR(255) UNIQUE,
+    task_type       VARCHAR(32) NOT NULL,
+    status          VARCHAR(16) NOT NULL DEFAULT 'pending',
+    params          JSONB NOT NULL,
+    progress        JSONB DEFAULT '{}',
+    result          JSONB,
+    error           TEXT,
+    backtest_ids    BIGINT[],
+    user_id         BIGINT,
+    started_at      TIMESTAMPTZ,
+    finished_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_backtest_task_status ON backtest_task(status);
+CREATE INDEX IF NOT EXISTS idx_backtest_task_user ON backtest_task(user_id, created_at DESC);
+
 COMMIT;

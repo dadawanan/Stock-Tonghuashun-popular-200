@@ -48,6 +48,14 @@ def _get_int_env(name: str, default: str) -> int:
         raise RuntimeError(f"环境变量无效: {name}={raw_value!r}") from exc
 
 
+def _get_float_env(name: str, default: str) -> float:
+    raw_value = _get_required_env(name, default)
+    try:
+        return float(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"环境变量无效: {name}={raw_value!r}") from exc
+
+
 def _parse_db_ssl() -> bool | None:
     raw = os.getenv("DB_SSL", "disable").strip().lower()
     if raw in ("require", "true", "1", "on"):
@@ -194,6 +202,42 @@ class Settings:
     @property
     def news_fetch_concurrency(self) -> int:
         return self._get("news_fetch_concurrency", lambda: _get_int_env("NEWS_FETCH_CONCURRENCY", "5"))  # type: ignore[return-value]
+
+    @property
+    def redis_url(self) -> str:
+        return self._get("redis_url", lambda: _get_required_env("REDIS_URL", "redis://localhost:6379/0"))  # type: ignore[return-value]
+
+    @property
+    def agent_stock_url(self) -> str:
+        return self._get("agent_stock_url", lambda: os.getenv("AGENT_STOCK_URL", "http://localhost:8001"))  # type: ignore[return-value]
+
+    # -----------------------------------------------------------------------
+    # 代理配置 — Tailscale + Clash Verge 反爬代理
+    # -----------------------------------------------------------------------
+    @property
+    def proxy_host(self) -> str:
+        """Tailscale 对端 IP（家庭电脑的 100.x.x.x 地址）。为空则不使用代理。"""
+        return self._get("proxy_host", lambda: os.getenv("PROXY_HOST", "").strip())  # type: ignore[return-value]
+
+    @property
+    def proxy_port(self) -> int:
+        """Clash Verge 局域网共享端口，默认 7890。"""
+        return self._get("proxy_port", lambda: _get_int_env("PROXY_PORT", "7890"))  # type: ignore[return-value]
+
+    @property
+    def proxy_timeout(self) -> float:
+        """请求超时秒数，默认 30。"""
+        return self._get("proxy_timeout", lambda: _get_float_env("PROXY_TIMEOUT", "30"))  # type: ignore[return-value]
+
+    @property
+    def proxy_delay_min(self) -> float:
+        """随机延迟最小秒数，默认 0.3。"""
+        return self._get("proxy_delay_min", lambda: _get_float_env("PROXY_DELAY_MIN", "0.3"))  # type: ignore[return-value]
+
+    @property
+    def proxy_delay_max(self) -> float:
+        """随机延迟最大秒数，默认 1.2。"""
+        return self._get("proxy_delay_max", lambda: _get_float_env("PROXY_DELAY_MAX", "1.2"))  # type: ignore[return-value]
 
 
 settings = Settings()

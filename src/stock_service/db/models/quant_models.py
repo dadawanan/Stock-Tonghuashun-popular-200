@@ -12,7 +12,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import Index as _Index
-from sqlalchemy.dialects.postgresql import BIGINT, JSONB, VARCHAR
+from sqlalchemy.dialects.postgresql import ARRAY, BIGINT, JSONB, VARCHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from . import Base
@@ -103,10 +103,18 @@ class BacktestResult(Base):
     strategy_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
     start_date: Mapped[Optional[date]] = mapped_column(Date)
     end_date: Mapped[Optional[date]] = mapped_column(Date)
+    total_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
     annual_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     max_drawdown: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    max_drawdown_days: Mapped[Optional[int]] = mapped_column(Integer)
     sharpe: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    sortino: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    calmar: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    alpha: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    beta: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    information_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
     win_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    total_trades: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
     __table_args__ = (
@@ -284,6 +292,30 @@ class PendingOrder(Base):
     )
 
 
+class BacktestTask(Base):
+    __tablename__ = "backtest_task"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    celery_task_id: Mapped[Optional[str]] = mapped_column(VARCHAR(255), unique=True)
+    task_type: Mapped[str] = mapped_column(VARCHAR(32), nullable=False)
+    status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="pending")
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    progress: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
+    result: Mapped[Optional[dict]] = mapped_column(JSONB)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    backtest_ids: Mapped[Optional[list]] = mapped_column(ARRAY(BIGINT))
+    user_id: Mapped[Optional[int]] = mapped_column(BIGINT)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        _Index("idx_backtest_task_status", "status"),
+        _Index("idx_backtest_task_user", "user_id", "created_at"),
+    )
+
+
 __all__ = [
     "StockBasic",
     "StockDaily",
@@ -299,4 +331,5 @@ __all__ = [
     "PositionDailySnapshot",
     "FeedbackLog",
     "PendingOrder",
+    "BacktestTask",
 ]

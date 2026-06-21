@@ -3,6 +3,7 @@
 import asyncio
 import itertools
 import logging
+from collections.abc import Callable
 from datetime import date, timedelta
 from dataclasses import dataclass, field
 
@@ -62,6 +63,7 @@ class ParameterOptimizer:
         strategy_engine: StrategyEngine | None = None,
         metric: str = "sharpe_ratio",  # Optimization target
         top_n: int = 5,  # Return top N results
+        progress_cb: Callable[[int, int, str], None] | None = None,
     ) -> list[OptimizationResult]:
         """Run grid search over parameter combinations.
 
@@ -137,6 +139,9 @@ class ParameterOptimizer:
             except Exception as e:
                 logger.warning(f"Backtest failed for params {dict(zip(param_names, combo))}: {e}")
 
+            if progress_cb:
+                progress_cb(i + 1, len(combinations), f"Params {dict(zip(param_names, combo))}")
+
         # Sort by metric
         if metric == "max_drawdown":
             # For drawdown, lower absolute value is better
@@ -200,6 +205,7 @@ class ParameterOptimizer:
         config: BacktestConfig | None = None,
         strategy_engine=None,
         metric: str = "sharpe_ratio",
+        progress_cb: Callable[[int, int, str], None] | None = None,
     ) -> WalkForwardResult:
         """滚动前进优化（Walk-Forward Optimization）
 
@@ -339,6 +345,12 @@ class ParameterOptimizer:
                 train_metrics=best_train_metrics,
                 test_metrics=test_metrics,
             ))
+
+            if progress_cb:
+                progress_cb(
+                    wi + 1, len(windows),
+                    f"Window {wi+1}/{len(windows)}: train {train_start}~{train_end}",
+                )
 
         # ── 汇总 ──
         # 计算测试期平均指标

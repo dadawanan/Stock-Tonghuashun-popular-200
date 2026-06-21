@@ -40,7 +40,7 @@ class StrategyResponse(BaseModel):
 
 
 class BacktestRequest(BaseModel):
-    strategy_id: int
+    strategy_id: int | None = None  # legacy 引擎需要
     start_date: date
     end_date: date
     initial_capital: float = 1_000_000.0
@@ -51,6 +51,10 @@ class BacktestRequest(BaseModel):
     max_holdings: int = 10
     stop_loss_pct: float = -0.08
     stock_codes: list[str] | None = None
+    # VectorBT 支持
+    engine: str = "legacy"  # "legacy" | "vectorbt"
+    strategy_type: str | None = None  # VectorBT 策略类型 (vbt_ma_cross, vbt_rsi, etc.)
+    strategy_params: dict | None = None  # VectorBT 策略参数
 
 
 class BacktestResponse(BaseModel):
@@ -61,7 +65,13 @@ class BacktestResponse(BaseModel):
     total_return: float | None
     annual_return: float | None
     max_drawdown: float | None
-    sharpe_ratio: float | None
+    max_drawdown_days: int | None
+    sharpe: float | None
+    sortino: float | None
+    calmar: float | None
+    alpha: float | None
+    beta: float | None
+    information_ratio: float | None
     win_rate: float | None
     total_trades: int | None
     created_at: datetime

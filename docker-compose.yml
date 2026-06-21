@@ -26,12 +26,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      agent-stock:
+        condition: service_started
     environment:
       DB_HOST: postgres
       DB_NAME: stock_db
       DB_USER: postgresql
       DB_PASSWORD: ${DB_PASSWORD}
       PYTHONPATH: /app/src
+      AGENT_STOCK_URL: http://agent-stock:9002
     ports:
       - "8000:8000"
     volumes:

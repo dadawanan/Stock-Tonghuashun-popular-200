@@ -1,4 +1,5 @@
 import http from './request';
+import { getAccessToken } from './auth-storage';
 import type { AuthTokensPublic } from './auth-storage';
 
 export interface AuthUser {
@@ -323,6 +324,8 @@ export const quantApi = {
 
   deleteSimAccount: (id: number) => http.delete(`/api/quant/sim/accounts/${id}`),
 
+  resumeSimAccount: (id: number) => http.post<any>(`/api/quant/sim/accounts/${id}/resume`),
+
   getPositions: (accountId: number) =>
     http.get<Position[]>(`/api/quant/sim/accounts/${accountId}/positions`),
 
@@ -455,7 +458,32 @@ export interface ChatMessage {
   isWelcome?: boolean;
 }
 
+export interface ChatChunk {
+  type: 'token' | 'done' | 'error';
+  content: string;
+}
+
 export const chatApi = {
-  sendMessage: (message: string) =>
-    http.post<ChatMessage>('/api/chat/send', { message }, { showError: false }),
+  sendMessage: (
+    message: string,
+    history: { role: string; content: string }[] = [],
+    signal?: AbortSignal,
+  ) => {
+    // Inject auth token to match other API calls
+    const token = getAccessToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch('/api/chat/send', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message, history }),
+      credentials: 'include',
+      signal,
+    });
+  },
 };
