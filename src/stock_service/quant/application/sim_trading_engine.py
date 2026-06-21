@@ -294,7 +294,7 @@ class SimTradingEngine:
             })
             peak_assets = total_assets
 
-        drawdown_triggered, drawdown_reason = rules.check_account_drawdown(
+        drawdown_triggered, _ = rules.check_account_drawdown(
             total_assets, peak_assets, config
         )
 
@@ -302,11 +302,20 @@ class SimTradingEngine:
             await quant_crud.update_sim_account(self._session, account_id, {
                 "status": "drawdown_halt",
             })
-            logger.warning(f"[settlement] 账户 {account_id} 回撤超限，暂停交易: {drawdown_reason}")
+            drawdown_pct = (total_assets - peak_assets) / peak_assets if peak_assets > 0 else 0
+            account_name = account.get("name", str(account_id))
+            logger.warning(
+                f"[settlement] 账户「{account_name}」回撤超限，暂停交易: "
+                f"总资产={total_assets:,.0f}, 峰值={peak_assets:,.0f}, "
+                f"回撤={drawdown_pct:.1%}, 限制={config.max_drawdown_pct:.0%}"
+            )
 
         return {
             "drawdown_warning": drawdown_triggered,
-            "drawdown_reason": drawdown_reason if drawdown_triggered else None,
+            "drawdown_reason": (
+                f"回撤{drawdown_pct:.1%}超过限制{config.max_drawdown_pct:.0%}"
+                if drawdown_triggered else None
+            ),
         }
 
     async def _update_total_assets(self, account_id: int) -> None:

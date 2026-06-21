@@ -72,6 +72,9 @@ class BacktestEngine:
         }
         benchmark_start_price = next(iter(benchmark_prices.values()), None) if benchmark_prices else None
 
+        drawdown_warn_count = 0
+        drawdown_first_date = None
+
         for trade_date in trading_dates:
             self._rules.update_available_quantity(positions)
 
@@ -187,11 +190,19 @@ class BacktestEngine:
             total_assets = cash + sum(p.market_value for p in positions.values())
             if total_assets > peak_assets:
                 peak_assets = total_assets
-            drawdown_ok, drawdown_reason = self._rules.check_account_drawdown(
+            drawdown_ok, _ = self._rules.check_account_drawdown(
                 total_assets, peak_assets, config
             )
             if not drawdown_ok:
-                logger.warning(f"账户回撤限制触发: {drawdown_reason}")
+                drawdown_warn_count += 1
+                if drawdown_warn_count == 1:
+                    drawdown_pct = (total_assets - peak_assets) / peak_assets if peak_assets > 0 else 0
+                    logger.warning(
+                        f"账户回撤限制触发: 日期={trade_date}, "
+                        f"总资产={total_assets:,.0f}, 峰值={peak_assets:,.0f}, "
+                        f"回撤={drawdown_pct:.1%}, 限制={config.max_drawdown_pct:.0%}"
+                    )
+                    drawdown_first_date = trade_date
 
             position_value = sum(p.market_value for p in positions.values())
             total_assets = cash + position_value
@@ -217,6 +228,12 @@ class BacktestEngine:
                     len(nav_series), len(trading_dates),
                     f"Processing {trade_date}",
                 )
+
+        if drawdown_warn_count > 1:
+            logger.warning(
+                f"账户回撤限制共触发 {drawdown_warn_count} 个交易日 "
+                f"(首次: {drawdown_first_date}, 末次: {trade_date})"
+            )
 
         metrics = self._calculate_metrics(
             nav_series, trades, config.initial_capital, start_date, end_date
