@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from typing import Any
 
@@ -8,6 +9,12 @@ import akshare as ak
 import pandas as pd
 
 from stock_service.infrastructure.providers.stock_code import code_digits, normalize_stock_code, stock_market_suffix
+
+logger = logging.getLogger(__name__)
+
+# 大单资金流缓存：避免短时间内重复拉取全量数据
+_BIG_DEAL_CACHE_TTL = 60.0  # 缓存 60 秒
+_big_deal_cache: tuple[float, pd.DataFrame] | None = None
 
 
 def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
@@ -35,6 +42,57 @@ def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
             last_error = exc
             time.sleep(attempt)
     raise RuntimeError(f"资金流获取失败: {normalized}") from last_error
+
+
+def _get_big_deal_df() -> pd.DataFrame:
+    """获取大单成交数据，带缓存避免短时间内重复拉取。"""
+    global _big_deal_cache
+    now = time.time()
+    if _big_deal_cache is not None:
+        ts, df = _big_deal_cache
+        if now - ts < _BIG_DEAL_CACHE_TTL:
+            return df
+
+    df = ak.stock_fund_flow_big_deal()
+    _big_deal_cache = (now, df)
+    return df
+
+
+def fetch_latest_fund_flow_big_deal(stock_code: str) -> dict[str, Any]:
+    """通过同花顺大单成交数据计算个股资金流向。
+
+    数据源: akshare stock_fund_flow_big_deal (同花顺)
+    逻辑: 按股票代码分组，买盘成交额 - 卖出成交额 = 主力净流入
+    """
+    normalized = normalize_stock_code(stock_code)
+    digits = code_digits(normalized)
+
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            df = _get_big_deal_df()
+            # 股票代码可能是 int 或 str，统一转 str 比较
+            stock_df = df[df["股票代码"].astype(str) == digits]
+            if stock_df.empty:
+                raise RuntimeError(f"大单数据中未找到: {normalized}")
+
+            buy_amount = stock_df.loc[stock_df["大单性质"] == "买盘", "成交额"].sum()
+            sell_amount = stock_df.loc[stock_df["大单性质"] == "卖盘", "成交额"].sum()
+            net_inflow = buy_amount - sell_amount  # 万元
+            total = buy_amount + sell_amount
+            ratio = round(net_inflow / total * 100, 4) if total > 0 else 0.0
+
+            # 成交额单位是万元，转换为元
+            return {
+                "flow_date": None,  # 大单数据不含日期字段
+                "main_net_inflow": net_inflow * 10000,  # 万 -> 元
+                "main_net_inflow_ratio": ratio,
+                "source": "akshare_big_deal",
+            }
+        except Exception as exc:
+            last_error = exc
+            time.sleep(attempt)
+    raise RuntimeError(f"大单资金流获取失败: {normalized}") from last_error
 
 
 def fetch_news_rows(stock_code: str, stock_name: str, max_news_per_stock: int = 20) -> list[dict[str, Any]]:
@@ -77,4 +135,4 @@ def fetch_news_rows(stock_code: str, stock_name: str, max_news_per_stock: int = 
     return rows
 
 
-__all__ = ["fetch_latest_fund_flow", "fetch_news_rows"]
+__all__ = ["fetch_latest_fund_flow", "fetch_latest_fund_flow_big_deal", "fetch_news_rows"]

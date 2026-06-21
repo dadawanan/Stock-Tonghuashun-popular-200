@@ -19,6 +19,9 @@ from stock_service.infrastructure.providers.tencent_provider import (
 from stock_service.infrastructure.providers.akshare_provider import (
     fetch_latest_fund_flow as fetch_latest_fund_flow_akshare,
 )
+from stock_service.infrastructure.providers.akshare_provider import (
+    fetch_latest_fund_flow_big_deal as fetch_latest_fund_flow_big_deal,
+)
 from stock_service.infrastructure.providers.stock_code import normalize_stock_code
 from stock_service.infrastructure.providers.tencent_provider import (
     benchmark_pct_change as benchmark_pct_change_tencent,
@@ -94,12 +97,13 @@ def benchmark_pct_change(stock_code: str) -> float:
 
 
 def fetch_latest_fund_flow(stock_code: str) -> dict[str, Any]:
-    """获取资金流数据：多源 fallback（东方财富 → 腾讯 → akshare）。"""
+    """获取资金流数据：多源 fallback（东方财富 → 腾讯 → akshare → 同花顺大单）。"""
     errors: list[str] = []
     for provider_name, provider_fn in (
         ("eastmoney", fetch_latest_fund_flow_eastmoney),
         ("tencent", fetch_latest_fund_flow_tencent),
         ("akshare", fetch_latest_fund_flow_akshare),
+        ("akshare_big_deal", fetch_latest_fund_flow_big_deal),
     ):
         try:
             result = provider_fn(stock_code)
